@@ -1,0 +1,434 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum ActivityLevel {
+  SEDENTARY
+  LIGHT
+  MODERATE
+  ACTIVE
+  VERY_ACTIVE
+}
+
+enum Goal {
+  LOSE_WEIGHT
+  MAINTAIN
+  GAIN_MUSCLE
+}
+
+enum BmiCategory {
+  UNDERWEIGHT
+  NORMAL_WEIGHT
+  OVERWEIGHT
+  OBESITY_CLASS_I
+  OBESITY_CLASS_II
+  OBESITY_CLASS_III
+}
+
+enum WalkingWorkoutStatus {
+  IN_PROGRESS
+  PAUSED
+  FINISHED
+}
+
+model User {
+  id                     String                    @id @default(cuid())
+  email                  String                    @unique
+  password               String
+  fullName               String?
+  avatarUrl              String?
+  healthProfileCompleted Boolean                   @default(false)
+  healthProfile          HealthProfile?
+  plannedMeals           PlannedMeal[]
+  householdMembership    HouseholdMember?
+  createdInvitations     HouseholdInvitation[]
+  householdMealsAdded    HouseholdPlannedMeal[]    @relation("HouseholdMealAddedBy")
+  consumedHouseholdMeals HouseholdPlannedMeal[]    @relation("HouseholdMealConsumedBy")
+  proposedHouseholdMeals HouseholdMealPollOption[] @relation("HouseholdMealOptionProposedBy")
+  householdMealVotes     HouseholdMealVote[]
+  mealCompletions        MealCompletion[]
+  consumedMealEntries    ConsumedMealEntry[]
+  householdChatMessages  HouseholdChatMessage[]
+  householdChatReadState HouseholdChatReadState[]
+  householdNotifications HouseholdNotification[]
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  mealReviews            MealReview[]
+  walkingWorkouts        WalkingWorkout[]
+}
+
+enum HouseholdRole {
+  ADMIN
+  MEMBER
+}
+
+model Household {
+  id                  String                   @id @default(cuid())
+  name                String
+  lunchPollCloseTime  String                   @default("11:00") @db.VarChar(5)
+  dinnerPollCloseTime String                   @default("17:00") @db.VarChar(5)
+  members             HouseholdMember[]
+  invitations         HouseholdInvitation[]
+  plannedMeals        HouseholdPlannedMeal[]
+  mealPolls           HouseholdMealPoll[]
+  mealCompletions     MealCompletion[]
+  chatMessages        HouseholdChatMessage[]
+  chatReadStates      HouseholdChatReadState[]
+  notifications       HouseholdNotification[]
+  shoppingItems       HouseholdShoppingItem[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+}
+
+model HouseholdMember {
+  id          String        @id @default(cuid())
+  householdId String
+  household   Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId      String        @unique
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        HouseholdRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+
+  @@index([householdId, joinedAt])
+}
+
+model HouseholdInvitation {
+  id              String    @id @default(cuid())
+  householdId     String
+  household       Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  code            String    @unique @db.VarChar(12)
+  createdByUserId String
+  createdBy       User      @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  expiresAt       DateTime
+  maxUses         Int       @default(20)
+  uses            Int       @default(0)
+  createdAt       DateTime  @default(now())
+
+  @@index([householdId, expiresAt])
+}
+
+model HealthProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  age           Int
+  gender        Gender
+  heightCm      Float
+  weightKg      Float
+  activityLevel ActivityLevel
+  goal          Goal
+
+  bmr                 Float
+  tdee                Float
+  dailyCaloriesTarget Int
+  bmi                 Float
+  bmiCategory         BmiCategory?
+  healthyWeightMinKg  Float?
+  healthyWeightMaxKg  Float?
+
+  targetProteinG Float
+  targetCarbsG   Float
+  targetFatG     Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WalkingWorkout {
+  id                    String               @id @default(cuid())
+  userId                String
+  user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientSessionId       String               @db.VarChar(64)
+  startedAt             DateTime
+  endedAt               DateTime?
+  lastActiveAt          DateTime             @default(now())
+  pausedAt              DateTime?
+  durationSeconds       Int                  @default(0)
+  pausedDurationSeconds Int                  @default(0)
+  steps                 Int                  @default(0)
+  distanceMeters        Float                @default(0)
+  caloriesBurned        Float?
+  activeCalories        Float?
+  averageSpeed          Float?
+  weightKgAtWorkout     Float?
+  metValue              Float?
+  calculationMethod     String?              @db.VarChar(40)
+  source                String               @default("MEALCRAFT_FOREGROUND") @db.VarChar(40)
+  status                WalkingWorkoutStatus @default(IN_PROGRESS)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@unique([userId, clientSessionId])
+  @@index([userId, startedAt])
+  @@index([userId, status])
+}
+
+model Meal {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  imageUrl        String?
+  category        MealType
+  prepTimeMinutes Int      @default(15) // Thời gian chuẩn bị
+  cookTimeMinutes Int      @default(20) // Thời gian nấu
+  servings        Int      @default(1) // Khẩu phần ăn chuẩn (người)
+  finalWeightG    Float? // Khối lượng món ăn sau khi nấu (g)
+
+  // Chỉ số dinh dưỡng chuẩn hóa tính trên 100g món ăn sau khi nấu
+  caloriesPer100g Float
+  proteinPer100g  Float
+  carbsPer100g    Float
+  fatPer100g      Float
+
+  // Các quan hệ
+  ingredients              Ingredient[] // Danh sách nguyên liệu
+  cookingSteps             CookingStep[] // Các bước thực hiện
+  plannedMeals             PlannedMeal[]
+  householdPlannedMeals    HouseholdPlannedMeal[]
+  householdMealPollOptions HouseholdMealPollOption[]
+  consumedMealEntries      ConsumedMealEntry[]
+  reviews                  MealReview[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+}
+
+model Ingredient {
+  id      String @id @default(uuid())
+  mealId  String
+  meal    Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  name    String // Ví dụ: Ức gà, Cà rốt
+  amountG Float // Khối lượng tính theo Gram (g)
+}
+
+model CookingStep {
+  id          String  @id @default(uuid())
+  mealId      String
+  meal        Meal    @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  stepNumber  Int // Thứ tự bước: 1, 2, 3...
+  title       String // Tên bước (VD: Sơ chế nguyên liệu)
+  instruction String // Hướng dẫn chi tiết
+  imageUrl    String? // Ảnh minh họa cho bước nấu
+}
+
+model MealReview {
+  id        String   @id @default(cuid())
+  mealId    String
+  meal      Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?  @db.VarChar(1000)
+  createdAt DateTime @default(now())
+
+  @@unique([mealId, userId])
+  @@index([mealId, createdAt])
+}
+
+model PlannedMeal {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealId     String
+  meal       Meal       @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  dateKey    String     @db.VarChar(10)
+  mealPeriod MealPeriod
+  servings   Float      @default(1)
+  isConsumed Boolean    @default(false)
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@unique([userId, dateKey, mealPeriod, mealId])
+  @@index([userId, dateKey, mealPeriod])
+  @@index([userId, isConsumed, dateKey])
+}
+
+model ConsumedMealEntry {
+  id               String     @id @default(cuid())
+  userId           String
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealId           String
+  meal             Meal       @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  mealPeriod       MealPeriod
+  servings         Float
+  nutritionSummary Json
+  consumedAt       DateTime   @default(now())
+
+  @@index([userId, consumedAt])
+}
+
+model HouseholdPlannedMeal {
+  id               String     @id @default(cuid())
+  householdId      String
+  household        Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  addedByUserId    String
+  addedBy          User       @relation("HouseholdMealAddedBy", fields: [addedByUserId], references: [id], onDelete: Cascade)
+  consumedByUserId String?
+  consumedBy       User?      @relation("HouseholdMealConsumedBy", fields: [consumedByUserId], references: [id], onDelete: SetNull)
+  mealId           String
+  meal             Meal       @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  dateKey          String     @db.VarChar(10)
+  mealPeriod       MealPeriod
+  servings         Float      @default(1)
+  isConsumed       Boolean    @default(false)
+  consumedAt       DateTime?
+  createdAt        DateTime   @default(now())
+
+  @@unique([householdId, dateKey, mealPeriod, mealId])
+  @@index([householdId, dateKey, mealPeriod])
+  @@index([consumedByUserId, isConsumed, consumedAt])
+}
+
+model HouseholdMealPoll {
+  id          String                    @id @default(cuid())
+  householdId String
+  household   Household                 @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  dateKey     String                    @db.VarChar(10)
+  mealPeriod  MealPeriod
+  closesAt    DateTime
+  closedAt    DateTime?
+  options     HouseholdMealPollOption[]
+  createdAt   DateTime                  @default(now())
+
+  @@unique([householdId, dateKey, mealPeriod])
+  @@index([closedAt, closesAt])
+}
+
+model HouseholdMealPollOption {
+  id                 String              @id @default(cuid())
+  pollId             String
+  poll               HouseholdMealPoll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  mealId             String
+  meal               Meal                @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  proposedByUserId   String
+  proposedBy         User                @relation("HouseholdMealOptionProposedBy", fields: [proposedByUserId], references: [id], onDelete: Cascade)
+  servings           Float               @default(1)
+  finalAgreeCount    Int?
+  finalDisagreeCount Int?
+  finalUnvotedCount  Int?
+  votes              HouseholdMealVote[]
+  createdAt          DateTime            @default(now())
+
+  @@unique([pollId, mealId])
+  @@index([pollId, createdAt])
+}
+
+model HouseholdChatMessage {
+  id           String    @id @default(cuid())
+  householdId  String
+  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  senderUserId String?
+  sender       User?     @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+  content      String    @db.VarChar(2000)
+  createdAt    DateTime  @default(now())
+
+  @@index([householdId, createdAt])
+}
+
+model HouseholdChatReadState {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt  DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([householdId, userId])
+}
+
+model HouseholdNotification {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventKey    String
+  type        String    @db.VarChar(40)
+  title       String
+  body        String
+  data        Json
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+
+  @@unique([userId, eventKey])
+  @@index([userId, readAt, createdAt])
+  @@index([householdId, createdAt])
+}
+
+model HouseholdShoppingItem {
+  id            String      @id @default(cuid())
+  householdId   String
+  household     Household   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  dateKey       String      @db.VarChar(10)
+  mealPeriod    MealPeriod?
+  ingredientKey String
+  name          String
+  amountG       Float
+  mealNames     Json
+  purchasedAt   DateTime?
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([householdId, dateKey, mealPeriod, ingredientKey])
+  @@index([householdId, dateKey, mealPeriod, purchasedAt])
+}
+
+model HouseholdMealVote {
+  id        String                  @id @default(cuid())
+  optionId  String
+  option    HouseholdMealPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agrees    Boolean
+  updatedAt DateTime                @updatedAt
+
+  @@unique([optionId, userId])
+  @@index([userId, updatedAt])
+}
+
+model MealCompletion {
+  id                        String     @id @default(cuid())
+  userId                    String
+  user                      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  householdId               String?
+  household                 Household? @relation(fields: [householdId], references: [id], onDelete: SetNull)
+  scopeKey                  String
+  dateKey                   String     @db.VarChar(10)
+  mealPeriod                MealPeriod
+  completedAt               DateTime   @default(now())
+  items                     Json
+  nutritionSummary          Json
+  consumedItems             Int
+  unavailableNutritionItems Int
+
+  @@unique([userId, dateKey, mealPeriod, scopeKey])
+  @@index([userId, completedAt])
+  @@index([householdId, dateKey, mealPeriod])
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum MealPeriod {
+  LUNCH
+  DINNER
+}
