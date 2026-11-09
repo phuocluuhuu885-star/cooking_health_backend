@@ -54,6 +54,7 @@ model User {
   avatarUrl              String?
   healthProfileCompleted Boolean                   @default(false)
   healthProfile          HealthProfile?
+  healthProfileHistory   HealthProfileHistory[]
   plannedMeals           PlannedMeal[]
   householdMembership    HouseholdMember?
   createdInvitations     HouseholdInvitation[]
@@ -70,6 +71,12 @@ model User {
   updatedAt              DateTime                  @updatedAt
   mealReviews            MealReview[]
   walkingWorkouts        WalkingWorkout[]
+  waterIntakeEntries     WaterIntakeEntry[]
+  personalExpenses      Expense[]                 @relation("PersonalExpenseOwner")
+  personalIncomes       Income[]
+  createdExpenseEntries Expense[]                 @relation("ExpenseCreator")
+  personalMealBudgets   MealBudget[]              @relation("PersonalMealBudgetOwner")
+  updatedMealBudgets   MealBudget[]              @relation("MealBudgetUpdater")
 }
 
 enum HouseholdRole {
@@ -82,6 +89,7 @@ model Household {
   name                String
   lunchPollCloseTime  String                   @default("11:00") @db.VarChar(5)
   dinnerPollCloseTime String                   @default("17:00") @db.VarChar(5)
+  mealVotingEnabled   Boolean                  @default(true)
   members             HouseholdMember[]
   invitations         HouseholdInvitation[]
   plannedMeals        HouseholdPlannedMeal[]
@@ -91,6 +99,8 @@ model Household {
   chatReadStates      HouseholdChatReadState[]
   notifications       HouseholdNotification[]
   shoppingItems       HouseholdShoppingItem[]
+  expenses            Expense[]
+  mealBudgets         MealBudget[]
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }
@@ -142,12 +152,25 @@ model HealthProfile {
   healthyWeightMinKg  Float?
   healthyWeightMaxKg  Float?
 
-  targetProteinG Float
-  targetCarbsG   Float
-  targetFatG     Float
+  targetProteinG               Float
+  targetCarbsG                 Float
+  targetFatG                   Float
+  allowFamilyNutritionPlanning Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model HealthProfileHistory {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weightKg   Float
+  bmi        Float
+  measuredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([userId, measuredAt])
 }
 
 model WalkingWorkout {
@@ -177,6 +200,102 @@ model WalkingWorkout {
   @@unique([userId, clientSessionId])
   @@index([userId, startedAt])
   @@index([userId, status])
+}
+
+model WaterIntakeEntry {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountMl   Int
+  consumedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([userId, consumedAt])
+}
+
+enum ExpenseScope {
+  PERSONAL
+  HOUSEHOLD
+}
+
+enum ExpenseSource {
+  MANUAL
+  MEAL
+}
+
+enum ExpenseCategory {
+  FOOD
+  SHOPPING
+  TRANSPORT
+  HOUSEHOLD
+  HEALTH
+  ENTERTAINMENT
+  OTHER
+}
+
+model Expense {
+  id              String           @id @default(cuid())
+  scope           ExpenseScope
+  source          ExpenseSource    @default(MANUAL)
+  category        ExpenseCategory
+  title           String           @db.VarChar(120)
+  amountVnd       Int
+  expenseDate     DateTime         @db.Date
+  note            String?          @db.VarChar(500)
+  mealId          String?
+  mealName        String?          @db.VarChar(120)
+  mealPeriod      MealPeriod?
+  ownerUserId     String?
+  owner           User?            @relation("PersonalExpenseOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  createdByUserId String?
+  createdBy       User?            @relation("ExpenseCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  householdId     String?
+  household       Household?       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([ownerUserId, expenseDate])
+  @@index([householdId, expenseDate])
+}
+
+model MealBudget {
+  id              String      @id @default(cuid())
+  mealPeriod      MealPeriod
+  limitVnd        Int
+  ownerUserId     String?
+  owner           User?       @relation("PersonalMealBudgetOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  householdId     String?
+  household       Household?  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  updatedByUserId String?
+  updatedBy       User?       @relation("MealBudgetUpdater", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([ownerUserId, mealPeriod])
+  @@unique([householdId, mealPeriod])
+}
+
+enum IncomeCategory {
+  SALARY
+  BUSINESS
+  INVESTMENT
+  GIFT
+  OTHER
+}
+
+model Income {
+  id          String         @id @default(cuid())
+  title       String         @db.VarChar(120)
+  amountVnd   Int
+  incomeDate  DateTime       @db.Date
+  category    IncomeCategory
+  note        String?        @db.VarChar(500)
+  ownerUserId String
+  owner       User           @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([ownerUserId, incomeDate])
 }
 
 model Meal {

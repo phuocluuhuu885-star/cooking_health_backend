@@ -7,19 +7,39 @@ import {
   isValidWeight,
 } from "./walkingWorkoutService.js";
 
-test("walking calorie estimate uses gross and active MET calories separately", () => {
-  assert.deepEqual(calculateWalkingEnergy(70, 30 * 60, 0), {
+test("standing still does not accumulate walking calories", () => {
+  assert.deepEqual(calculateWalkingEnergy(70, 30 * 60, 0, 0), {
     averageSpeed: 0,
-    metValue: 2,
-    caloriesBurned: 73.5,
-    activeCalories: 36.8,
+    metValue: 0,
+    caloriesBurned: 0,
+    activeCalories: 0,
   });
 });
 
 test("walking MET increases with measured pace", () => {
-  assert.equal(calculateWalkingEnergy(70, 600, 600).metValue, 2.8);
-  assert.equal(calculateWalkingEnergy(70, 600, 900).metValue, 3.5);
-  assert.equal(calculateWalkingEnergy(70, 600, 1100).metValue, 5);
+  assert.equal(calculateWalkingEnergy(70, 600, 600, 1000).metValue, 2.8);
+  assert.equal(calculateWalkingEnergy(70, 600, 900, 1000).metValue, 3.5);
+  assert.equal(calculateWalkingEnergy(70, 600, 1100, 1000).metValue, 5);
+});
+
+test("idle time does not increase calories when steps and distance are unchanged", () => {
+  const walkingCalories = calculateWalkingEnergy(70, 600, 600, 1000);
+  const idleCalories = calculateWalkingEnergy(70, 1800, 600, 1000);
+  assert.equal(idleCalories.caloriesBurned, walkingCalories.caloriesBurned);
+  assert.equal(idleCalories.activeCalories, walkingCalories.activeCalories);
+});
+
+test("GPS-only calorie estimate is based on distance, not idle duration", () => {
+  const shortSession = calculateWalkingEnergy(70, 600, 600);
+  const longSession = calculateWalkingEnergy(70, 1800, 600);
+  assert.equal(longSession.caloriesBurned, shortSession.caloriesBurned);
+});
+
+test("step data can estimate calories when GPS distance is unavailable", () => {
+  const shortSession = calculateWalkingEnergy(70, 600, 0, 1000);
+  const longSession = calculateWalkingEnergy(70, 1800, 0, 1000);
+  assert.ok(shortSession.caloriesBurned && shortSession.caloriesBurned > 0);
+  assert.equal(longSession.caloriesBurned, shortSession.caloriesBurned);
 });
 
 test("energy remains unavailable without valid weight or active duration", () => {

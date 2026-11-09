@@ -6,6 +6,10 @@ import {
   PrismaClient,
 } from "../generated/prisma/client.js";
 import { calculateNutritionSummary } from "../services/mealNutritionService.js";
+import {
+  estimateMealPrice,
+  type EstimatedPriceRange,
+} from "../services/mealPriceEstimateService.js";
 import { createMealCompletionSnapshot } from "../services/mealCompletionService.js";
 import "dotenv/config";
 
@@ -23,7 +27,7 @@ const getVietnamDateKey = (date = new Date()): string => {
     day: "2-digit",
   }).formatToParts(date);
   const values = Object.fromEntries(
-    parts.map(({ type, value }) => [type, value]),
+    parts.map(({ type, value }) => [type, value])
   );
   return `${values.year}-${values.month}-${values.day}`;
 };
@@ -51,11 +55,11 @@ const lockPersonalMeal = async (
   transaction: Prisma.TransactionClient,
   userId: string,
   dateKey: string,
-  mealPeriod: MealPeriod,
+  mealPeriod: MealPeriod
 ): Promise<void> => {
   const lockKey = `personal-meal:${userId}:${dateKey}:${mealPeriod}`;
   await transaction.$queryRaw`
-    SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
+    SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text AS "locked"
   `;
 };
 
@@ -67,7 +71,7 @@ const emptyNutrition = () => ({
 });
 
 const getCompletedMealIds = (
-  completion: { items: Prisma.JsonValue } | null,
+  completion: { items: Prisma.JsonValue } | null
 ): Set<string> => {
   if (!completion || !Array.isArray(completion.items)) {
     return new Set();
@@ -80,8 +84,8 @@ const getCompletedMealIds = (
       "mealId" in item &&
       typeof item.mealId === "string"
         ? [item.mealId]
-        : [],
-    ),
+        : []
+    )
   );
 };
 
@@ -99,11 +103,13 @@ type PlannedMealResponseItem = {
     category: string;
   };
   nutritionSummary: ReturnType<typeof calculateNutritionSummary>;
+  estimatedPrice: EstimatedPriceRange;
 };
 
 type MealPeriodResponse = {
   items: PlannedMealResponseItem[];
   nutritionSummary: ReturnType<typeof emptyNutrition>;
+  estimatedPrice: EstimatedPriceRange;
   unavailableNutritionItems: number;
 };
 
@@ -122,7 +128,7 @@ const roundNutrition = (nutrition: ConsumedNutrition): ConsumedNutrition => ({
 });
 
 const readNutritionSnapshot = (
-  value: Prisma.JsonValue,
+  value: Prisma.JsonValue
 ): ConsumedNutrition | null => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
@@ -141,7 +147,7 @@ const readNutritionSnapshot = (
 };
 
 const readSnapshotNutrition = (
-  value: Prisma.JsonValue | undefined,
+  value: Prisma.JsonValue | undefined
 ): ConsumedNutrition | null => {
   if (
     value === undefined ||
@@ -194,7 +200,7 @@ const isReportPeriod = (value: unknown): value is "WEEK" | "MONTH" =>
 
 export const addMealToPlan = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   try {
     const userId = req.user?.id;
@@ -316,7 +322,7 @@ export const addMealToPlan = async (
         },
         nutritionSummary: calculateNutritionSummary(
           plannedMeal.meal,
-          plannedMeal.servings,
+          plannedMeal.servings
         ),
       },
     });
@@ -344,7 +350,7 @@ export const addMealToPlan = async (
 
 export const getMealPlan = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   try {
     const userId = req.user?.id;
@@ -401,11 +407,13 @@ export const getMealPlan = async (
       LUNCH: {
         items: [],
         nutritionSummary: emptyNutrition(),
+        estimatedPrice: { minVnd: 0, maxVnd: 0 },
         unavailableNutritionItems: 0,
       },
       DINNER: {
         items: [],
         nutritionSummary: emptyNutrition(),
+        estimatedPrice: { minVnd: 0, maxVnd: 0 },
         unavailableNutritionItems: 0,
       },
     };
@@ -417,7 +425,11 @@ export const getMealPlan = async (
     for (const plannedMeal of plannedMeals) {
       const nutritionSummary = calculateNutritionSummary(
         plannedMeal.meal,
-        plannedMeal.servings,
+        plannedMeal.servings
+      );
+      const estimatedPrice = estimateMealPrice(
+        plannedMeal.meal,
+        plannedMeal.servings
       );
       const entry = meals[plannedMeal.mealPeriod];
       const isConsumed =
@@ -445,8 +457,11 @@ export const getMealPlan = async (
           category: plannedMeal.meal.category,
         },
         nutritionSummary,
+        estimatedPrice,
       });
 
+      entry.estimatedPrice.minVnd += estimatedPrice.minVnd;
+      entry.estimatedPrice.maxVnd += estimatedPrice.maxVnd;
       if (nutritionSummary) {
         entry.nutritionSummary.calories += nutritionSummary.total.calories;
         entry.nutritionSummary.proteinG += nutritionSummary.total.proteinG;
@@ -494,7 +509,7 @@ export const getMealPlan = async (
 
 export const updateMealConsumption = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   try {
     const userId = req.user?.id;
@@ -536,7 +551,7 @@ export const updateMealConsumption = async (
         transaction,
         userId,
         plannedMeal.dateKey,
-        plannedMeal.mealPeriod,
+        plannedMeal.mealPeriod
       );
       const currentMeal = await transaction.plannedMeal.findFirst({
         where: { id, userId },
@@ -600,7 +615,7 @@ export const updateMealConsumption = async (
 
 export const completePersonalMeal = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const dateKey = getDateKey(req.body?.date);
@@ -691,7 +706,8 @@ export const completePersonalMeal = async (
     ) {
       res.status(409).json({
         success: false,
-        message: "Không thể cập nhật xác nhận bữa ăn. Vui lòng tải lại và thử lại.",
+        message:
+          "Không thể cập nhật xác nhận bữa ăn. Vui lòng tải lại và thử lại.",
       });
       return;
     }
@@ -705,7 +721,7 @@ export const completePersonalMeal = async (
 
 export const deletePlannedMeal = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const id = req.params.id;
@@ -740,7 +756,7 @@ export const deletePlannedMeal = async (
         transaction,
         userId,
         plannedMeal.dateKey,
-        plannedMeal.mealPeriod,
+        plannedMeal.mealPeriod
       );
       const currentMeal = await transaction.plannedMeal.findFirst({
         where: { id, userId },
@@ -794,7 +810,7 @@ export const deletePlannedMeal = async (
 
 export const addConsumedMealEntry = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const { mealId, mealPeriod, servings } = req.body as {
@@ -832,7 +848,9 @@ export const addConsumedMealEntry = async (
       include: { ingredients: true },
     });
     if (!meal) {
-      res.status(404).json({ success: false, message: "Không tìm thấy món ăn" });
+      res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy món ăn" });
       return;
     }
 
@@ -880,7 +898,7 @@ export const addConsumedMealEntry = async (
 
 export const getDailyConsumedMeals = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const dateKey = getDateKey(req.query.date);
@@ -904,12 +922,8 @@ export const getDailyConsumedMeals = async (
   rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
   try {
-    const [
-      personalMeals,
-      householdMeals,
-      dailyCompletions,
-      manualEntries,
-    ] = await Promise.all([
+    const [personalMeals, householdMeals, dailyCompletions, manualEntries] =
+      await Promise.all([
         prisma.plannedMeal.findMany({
           where: {
             userId,
@@ -969,17 +983,15 @@ export const getDailyConsumedMeals = async (
     const completedPeriods = new Set(
       mealPeriodLocks.map(
         (completion) =>
-          `${completion.scopeKey}:${completion.dateKey}:${completion.mealPeriod}`,
-      ),
+          `${completion.scopeKey}:${completion.dateKey}:${completion.mealPeriod}`
+      )
     );
 
     const individualItems = [
       ...personalMeals
         .filter(
           (meal) =>
-            !completedPeriods.has(
-              `PERSONAL:${meal.dateKey}:${meal.mealPeriod}`,
-            ),
+            !completedPeriods.has(`PERSONAL:${meal.dateKey}:${meal.mealPeriod}`)
         )
         .map((meal) => ({
           id: meal.id,
@@ -997,8 +1009,8 @@ export const getDailyConsumedMeals = async (
         .filter(
           (meal) =>
             !completedPeriods.has(
-              `${meal.householdId}:${meal.dateKey}:${meal.mealPeriod}`,
-            ),
+              `${meal.householdId}:${meal.dateKey}:${meal.mealPeriod}`
+            )
         )
         .map((meal) => ({
           id: meal.id,
@@ -1066,7 +1078,7 @@ export const getDailyConsumedMeals = async (
 
     const items = [...individualItems, ...completedItems].sort(
       (first, second) =>
-        first.consumedAt.getTime() - second.consumedAt.getTime(),
+        first.consumedAt.getTime() - second.consumedAt.getTime()
     );
     res.status(200).json({
       success: true,
@@ -1089,7 +1101,7 @@ export const getDailyConsumedMeals = async (
 
 export const getConsumptionReport = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   try {
     const userId = req.user?.id;
@@ -1142,75 +1154,74 @@ export const getConsumptionReport = async (
 
     const [personalMeals, householdMeals, completions, manualEntries] =
       await Promise.all([
-      prisma.plannedMeal.findMany({
-        where: {
-          userId,
-          isConsumed: true,
-          consumedAt: { gte: rangeStart, lt: rangeEndExclusive },
-        },
-        include: {
-          meal: {
-            include: { ingredients: true },
+        prisma.plannedMeal.findMany({
+          where: {
+            userId,
+            isConsumed: true,
+            consumedAt: { gte: rangeStart, lt: rangeEndExclusive },
           },
-        },
-        orderBy: { consumedAt: "asc" },
-      }),
-      prisma.householdPlannedMeal.findMany({
-        where: {
-          consumedByUserId: userId,
-          isConsumed: true,
-          consumedAt: { gte: rangeStart, lt: rangeEndExclusive },
-        },
-        include: {
-          meal: {
-            include: { ingredients: true },
+          include: {
+            meal: {
+              include: { ingredients: true },
+            },
           },
-        },
-        orderBy: { consumedAt: "asc" },
-      }),
-      prisma.mealCompletion.findMany({
-        where: {
-          userId,
-          completedAt: { gte: rangeStart, lt: rangeEndExclusive },
-        },
-        orderBy: { completedAt: "asc" },
-      }),
-      prisma.consumedMealEntry.findMany({
-        where: {
-          userId,
-          consumedAt: { gte: rangeStart, lt: rangeEndExclusive },
-        },
-        orderBy: { consumedAt: "asc" },
-      }),
-    ]);
+          orderBy: { consumedAt: "asc" },
+        }),
+        prisma.householdPlannedMeal.findMany({
+          where: {
+            consumedByUserId: userId,
+            isConsumed: true,
+            consumedAt: { gte: rangeStart, lt: rangeEndExclusive },
+          },
+          include: {
+            meal: {
+              include: { ingredients: true },
+            },
+          },
+          orderBy: { consumedAt: "asc" },
+        }),
+        prisma.mealCompletion.findMany({
+          where: {
+            userId,
+            completedAt: { gte: rangeStart, lt: rangeEndExclusive },
+          },
+          orderBy: { completedAt: "asc" },
+        }),
+        prisma.consumedMealEntry.findMany({
+          where: {
+            userId,
+            consumedAt: { gte: rangeStart, lt: rangeEndExclusive },
+          },
+          orderBy: { consumedAt: "asc" },
+        }),
+      ]);
     const completedPersonalPeriods = new Set(
       completions
         .filter((completion) => completion.scopeKey === "PERSONAL")
-        .map((completion) => `${completion.dateKey}:${completion.mealPeriod}`),
+        .map((completion) => `${completion.dateKey}:${completion.mealPeriod}`)
     );
     const completedHouseholdPeriods = new Set(
       completions
         .filter((completion) => completion.scopeKey !== "PERSONAL")
         .map(
           (completion) =>
-            `${completion.householdId}:${completion.dateKey}:${completion.mealPeriod}`,
-        ),
+            `${completion.householdId}:${completion.dateKey}:${completion.mealPeriod}`
+        )
     );
     const consumedMeals = [
       ...personalMeals.filter(
         (meal) =>
-          !completedPersonalPeriods.has(`${meal.dateKey}:${meal.mealPeriod}`),
+          !completedPersonalPeriods.has(`${meal.dateKey}:${meal.mealPeriod}`)
       ),
       ...householdMeals.filter(
         (meal) =>
           !completedHouseholdPeriods.has(
-            `${meal.householdId}:${meal.dateKey}:${meal.mealPeriod}`,
-          ),
+            `${meal.householdId}:${meal.dateKey}:${meal.mealPeriod}`
+          )
       ),
     ].sort(
       (first, second) =>
-        (first.consumedAt?.getTime() ?? 0) -
-        (second.consumedAt?.getTime() ?? 0),
+        (first.consumedAt?.getTime() ?? 0) - (second.consumedAt?.getTime() ?? 0)
     );
 
     const totals = emptyNutrition();
@@ -1227,7 +1238,7 @@ export const getConsumptionReport = async (
       day.consumedItems += 1;
       const nutrition = calculateNutritionSummary(
         plannedMeal.meal,
-        plannedMeal.servings,
+        plannedMeal.servings
       );
       if (!nutrition) {
         day.unavailableNutritionItems += 1;

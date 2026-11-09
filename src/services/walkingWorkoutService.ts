@@ -1,4 +1,4 @@
-export const WALKING_CALCULATION_METHOD = "MET_SPEED_BANDS_V1";
+export const WALKING_CALCULATION_METHOD = "MET_SPEED_BANDS_V2";
 export const WALKING_SOURCE = "MEALCRAFT_NATIVE";
 
 export type WalkingEnergyEstimate = {
@@ -12,18 +12,45 @@ export const calculateWalkingEnergy = (
   weightKg: number | null,
   durationSeconds: number,
   distanceMeters: number,
+  steps = 0,
 ): WalkingEnergyEstimate => {
   const validDuration =
     Number.isFinite(durationSeconds) && durationSeconds > 0;
+  const validDistance =
+    Number.isFinite(distanceMeters) && distanceMeters >= 0;
   const averageSpeed =
-    validDuration &&
-    Number.isFinite(distanceMeters) &&
-    distanceMeters >= 0
+    validDuration && validDistance
       ? distanceMeters / durationSeconds
       : null;
-  const speedKmh = (averageSpeed ?? 0) * 3.6;
+  const validSteps = Number.isSafeInteger(steps) && steps > 0;
+  const estimatedMovingDurationSeconds =
+    validDuration &&
+    validDistance &&
+    (distanceMeters > 0 || validSteps)
+      ? Math.min(
+          durationSeconds,
+          validSteps
+            ? (steps * 60) / 100
+            : distanceMeters / 1.1,
+        )
+      : 0;
+  const movingSpeed =
+    estimatedMovingDurationSeconds > 0
+      ? distanceMeters > 0
+        ? distanceMeters / estimatedMovingDurationSeconds
+        : 1.1
+      : 0;
+  const speedKmh = movingSpeed * 3.6;
   const metValue =
-    speedKmh < 3.2 ? 2 : speedKmh < 4.8 ? 2.8 : speedKmh < 6.4 ? 3.5 : 5;
+    estimatedMovingDurationSeconds === 0
+      ? 0
+      : speedKmh < 3.2
+        ? 2
+        : speedKmh < 4.8
+          ? 2.8
+          : speedKmh < 6.4
+            ? 3.5
+            : 5;
 
   if (
     !validDuration ||
@@ -40,7 +67,8 @@ export const calculateWalkingEnergy = (
     };
   }
 
-  const calorieFactor = (3.5 * weightKg * (durationSeconds / 60)) / 200;
+  const calorieFactor =
+    (3.5 * weightKg * (estimatedMovingDurationSeconds / 60)) / 200;
   return {
     averageSpeed,
     metValue,

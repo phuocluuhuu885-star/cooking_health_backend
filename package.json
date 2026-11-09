@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "seed": "tsx prisma/seed.ts",
-    "test": "tsx --test src/services/walkingWorkoutService.test.ts src/services/householdMealReminder.test.ts src/services/avatarStorage.test.ts"
+    "test": "tsx --test src/services/walkingWorkoutService.test.ts src/services/householdMealReminder.test.ts src/services/avatarStorage.test.ts src/services/aiMealChatService.test.ts src/services/geminiApi.test.ts src/services/mealScanService.test.ts"
   },
   "keywords": [],
   "author": "",

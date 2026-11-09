@@ -206,6 +206,7 @@ export const updateWalkingWorkoutProgress = async (
         workout.weightKgAtWorkout,
         durationSeconds,
         distanceMeters,
+        steps,
       );
       const updated = await tx.walkingWorkout.update({
         where: { id: workoutId },
@@ -320,6 +321,7 @@ const updateWorkoutStatus = async (
           current.weightKgAtWorkout,
           durationSeconds,
           current.distanceMeters,
+          current.steps,
         );
         return tx.walkingWorkout.update({
           where: { id: workoutId },
@@ -408,6 +410,7 @@ export const finishWalkingWorkout = async (
         current.weightKgAtWorkout,
         durationSeconds,
         current.distanceMeters,
+        current.steps,
       );
       return tx.walkingWorkout.update({
         where: { id: workoutId },

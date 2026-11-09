@@ -8,6 +8,7 @@ import {
 } from "../generated/prisma/client.js";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { calculateNutritionSummary } from "../services/mealNutritionService.js";
+import { estimateMealPrice } from "../services/mealPriceEstimateService.js";
 import { createMealCompletionSnapshot } from "../services/mealCompletionService.js";
 import {
   ensureHouseholdMealPoll,
@@ -48,7 +49,7 @@ const getHouseholdTimeKey = (date: Date) => {
     hourCycle: "h23",
   }).formatToParts(date);
   const values = Object.fromEntries(
-    parts.map(({ type, value }) => [type, value]),
+    parts.map(({ type, value }) => [type, value])
   );
   return `${values.hour}:${values.minute}`;
 };
@@ -82,7 +83,7 @@ const recordHouseholdMealVote = async (
   mealPeriod: MealPeriod,
   mealId: string,
   userId: string,
-  agrees: boolean,
+  agrees: boolean
 ) => {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -100,6 +101,13 @@ const recordHouseholdMealVote = async (
           });
           if (!poll) {
             return { error: "POLL_NOT_FOUND" as const };
+          }
+          const household = await transaction.household.findUnique({
+            where: { id: householdId },
+            select: { mealVotingEnabled: true },
+          });
+          if (!household?.mealVotingEnabled) {
+            return { error: "POLL_DISABLED" as const };
           }
           if (poll.closedAt || poll.closesAt <= new Date()) {
             return { error: "POLL_CLOSED" as const, pollId: poll.id };
@@ -135,7 +143,7 @@ const recordHouseholdMealVote = async (
           });
           return { vote };
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
     } catch (error) {
       if (
@@ -153,7 +161,7 @@ const recordHouseholdMealVote = async (
 
 export const getCurrentHousehold = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -185,9 +193,108 @@ export const getCurrentHousehold = async (
   }
 };
 
+export const updateHouseholdMealVoting = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const userId = req.user?.id;
+  const enabled = req.body?.enabled;
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      message: "Phiên đăng nhập không hợp lệ",
+    });
+    return;
+  }
+  if (typeof enabled !== "boolean") {
+    res.status(400).json({
+      success: false,
+      message: "Trạng thái bình chọn không hợp lệ",
+    });
+    return;
+  }
+
+  try {
+    const member = await getMember(userId);
+    if (!member) {
+      res.status(404).json({
+        success: false,
+        message: "Bạn chưa thuộc gia đình nào",
+      });
+      return;
+    }
+    if (member.role !== HouseholdRole.ADMIN) {
+      res.status(403).json({
+        success: false,
+        message: "Chỉ quản trị viên được bật hoặc tắt bình chọn",
+      });
+      return;
+    }
+
+    await prisma.$transaction(async (transaction) => {
+      if (!enabled) {
+        const openPolls = await transaction.householdMealPoll.findMany({
+          where: {
+            householdId: member.householdId,
+            dateKey: { gte: getHouseholdDateKey() },
+            closedAt: null,
+          },
+          include: {
+            options: {
+              select: {
+                mealId: true,
+                proposedByUserId: true,
+                servings: true,
+              },
+            },
+          },
+        });
+        for (const poll of openPolls) {
+          for (const option of poll.options) {
+            await transaction.householdPlannedMeal.upsert({
+              where: {
+                householdId_dateKey_mealPeriod_mealId: {
+                  householdId: member.householdId,
+                  dateKey: poll.dateKey,
+                  mealPeriod: poll.mealPeriod,
+                  mealId: option.mealId,
+                },
+              },
+              update: { servings: option.servings },
+              create: {
+                householdId: member.householdId,
+                addedByUserId: option.proposedByUserId,
+                mealId: option.mealId,
+                dateKey: poll.dateKey,
+                mealPeriod: poll.mealPeriod,
+                servings: option.servings,
+              },
+            });
+          }
+        }
+      }
+      await transaction.household.update({
+        where: { id: member.householdId },
+        data: { mealVotingEnabled: enabled },
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { mealVotingEnabled: enabled },
+    });
+  } catch (error) {
+    console.error("Failed to update household meal voting setting", error);
+    res.status(500).json({
+      success: false,
+      message: "Không thể cập nhật trạng thái bình chọn",
+    });
+  }
+};
+
 export const createHousehold = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
@@ -234,7 +341,7 @@ export const createHousehold = async (
 
 export const createHouseholdInvitation = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const householdId = String(req.params.id ?? "");
@@ -275,7 +382,7 @@ export const createHouseholdInvitation = async (
 
 export const joinHousehold = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const code =
@@ -381,7 +488,7 @@ export const joinHousehold = async (
 
 export const removeHouseholdMember = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const householdId = String(req.params.id ?? "");
@@ -436,7 +543,7 @@ export const removeHouseholdMember = async (
 
 export const leaveHousehold = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -461,7 +568,7 @@ export const leaveHousehold = async (
         member.household.members.length > 1
       ) {
         const nextAdmin = member.household.members.find(
-          (item) => item.userId !== userId,
+          (item) => item.userId !== userId
         );
         if (nextAdmin) {
           await transaction.householdMember.update({
@@ -496,7 +603,7 @@ export const leaveHousehold = async (
 
 export const getHouseholdMealPlan = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const dateKey = getDateKey(req.query.date);
@@ -527,30 +634,30 @@ export const getHouseholdMealPlan = async (
       select: { userId: true, mealPeriod: true, completedAt: true },
     });
     const completedPeriods = new Set(
-      completions.map((completion) => completion.mealPeriod),
+      completions.map((completion) => completion.mealPeriod)
     );
-    const polls =
-      dateKey >= currentDateKey
+    const polls = member.household.mealVotingEnabled
+      ? dateKey >= currentDateKey
         ? await Promise.all(
             pollPeriods.map(async (mealPeriod) => {
               const poll = await ensureHouseholdMealPoll(
                 prisma,
                 member.householdId,
                 dateKey,
-                mealPeriod,
+                mealPeriod
               );
               await finalizeHouseholdMealPoll(
                 prisma,
                 poll.id,
                 new Date(),
                 completions.some(
-                  (completion) => completion.mealPeriod === mealPeriod,
-                ),
+                  (completion) => completion.mealPeriod === mealPeriod
+                )
               );
               return completedPeriods.has(mealPeriod) ? null : poll.id;
-            }),
+            })
           ).then((pollIds) =>
-            pollIds.filter((pollId): pollId is string => pollId !== null),
+            pollIds.filter((pollId): pollId is string => pollId !== null)
           )
         : (
             await prisma.householdMealPoll.findMany({
@@ -559,7 +666,8 @@ export const getHouseholdMealPlan = async (
             })
           )
             .filter((poll) => !completedPeriods.has(poll.mealPeriod))
-            .map((poll) => poll.id);
+            .map((poll) => poll.id)
+      : [];
     if (dateKey < currentDateKey) {
       const historicalPolls = await prisma.householdMealPoll.findMany({
         where: { id: { in: polls }, closedAt: null },
@@ -572,10 +680,10 @@ export const getHouseholdMealPlan = async (
             poll.id,
             new Date(),
             completions.some(
-              (completion) => completion.mealPeriod === poll.mealPeriod,
-            ),
-          ),
-        ),
+              (completion) => completion.mealPeriod === poll.mealPeriod
+            )
+          )
+        )
       );
     }
     const [plannedMeals, pollDetails, householdMembers] = await Promise.all([
@@ -600,6 +708,8 @@ export const getHouseholdMealPlan = async (
                   description: true,
                   imageUrl: true,
                   category: true,
+                  servings: true,
+                  ingredients: { select: { name: true, amountG: true } },
                 },
               },
               proposedBy: { select: { id: true, fullName: true } },
@@ -615,21 +725,22 @@ export const getHouseholdMealPlan = async (
       }),
     ]);
     const householdMemberIds = new Set(
-      householdMembers.map((householdMember) => householdMember.userId),
+      householdMembers.map((householdMember) => householdMember.userId)
     );
     const householdMemberCount = householdMembers.length;
     const ownCompletions = new Map(
       completions
         .filter((completion) => completion.userId === userId)
-        .map((completion) => [completion.mealPeriod, completion.completedAt]),
+        .map((completion) => [completion.mealPeriod, completion.completedAt])
     );
     const lockedPeriods = new Set(
-      completions.map((completion) => completion.mealPeriod),
+      completions.map((completion) => completion.mealPeriod)
     );
     const meals = {
       LUNCH: {
         items: [] as object[],
         nutritionSummary: { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 },
+        estimatedPrice: { minVnd: 0, maxVnd: 0 },
         unavailableNutritionItems: 0,
         isCompleted: ownCompletions.has(MealPeriod.LUNCH),
         completedAt: ownCompletions.get(MealPeriod.LUNCH) ?? null,
@@ -639,6 +750,7 @@ export const getHouseholdMealPlan = async (
       DINNER: {
         items: [] as object[],
         nutritionSummary: { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 },
+        estimatedPrice: { minVnd: 0, maxVnd: 0 },
         unavailableNutritionItems: 0,
         isCompleted: ownCompletions.has(MealPeriod.DINNER),
         completedAt: ownCompletions.get(MealPeriod.DINNER) ?? null,
@@ -647,7 +759,7 @@ export const getHouseholdMealPlan = async (
       },
     };
     const pollByPeriod = new Map(
-      pollDetails.map((poll) => [poll.mealPeriod, poll]),
+      pollDetails.map((poll) => [poll.mealPeriod, poll])
     );
     pollPeriods.forEach((mealPeriod) => {
       const poll = pollByPeriod.get(mealPeriod);
@@ -659,7 +771,7 @@ export const getHouseholdMealPlan = async (
         closedAt: poll.closedAt,
         options: poll.options.map((option) => {
           const activeVotes = option.votes.filter((vote) =>
-            householdMemberIds.has(vote.userId),
+            householdMemberIds.has(vote.userId)
           );
           const agrees =
             poll.closedAt && option.finalAgreeCount !== null
@@ -679,7 +791,14 @@ export const getHouseholdMealPlan = async (
             servings: option.servings,
             createdAt: option.createdAt,
             proposedBy: option.proposedBy,
-            meal: option.meal,
+            meal: {
+              id: option.meal.id,
+              name: option.meal.name,
+              description: option.meal.description,
+              imageUrl: option.meal.imageUrl,
+              category: option.meal.category,
+            },
+            estimatedPrice: estimateMealPrice(option.meal, option.servings),
             agrees,
             disagrees,
             unvoted,
@@ -698,7 +817,11 @@ export const getHouseholdMealPlan = async (
     plannedMeals.forEach((plannedMeal) => {
       const nutritionSummary = calculateNutritionSummary(
         plannedMeal.meal,
-        plannedMeal.servings,
+        plannedMeal.servings
+      );
+      const estimatedPrice = estimateMealPrice(
+        plannedMeal.meal,
+        plannedMeal.servings
       );
       const period = meals[plannedMeal.mealPeriod];
       period.items.push({
@@ -717,7 +840,10 @@ export const getHouseholdMealPlan = async (
           category: plannedMeal.meal.category,
         },
         nutritionSummary,
+        estimatedPrice,
       });
+      period.estimatedPrice.minVnd += estimatedPrice.minVnd;
+      period.estimatedPrice.maxVnd += estimatedPrice.maxVnd;
       if (!nutritionSummary) {
         period.unavailableNutritionItems += 1;
       } else {
@@ -729,7 +855,7 @@ export const getHouseholdMealPlan = async (
     });
     Object.values(meals).forEach((period) => {
       period.nutritionSummary.calories = Math.round(
-        period.nutritionSummary.calories,
+        period.nutritionSummary.calories
       );
       period.nutritionSummary.proteinG =
         Math.round(period.nutritionSummary.proteinG * 10) / 10;
@@ -752,7 +878,7 @@ export const getHouseholdMealPlan = async (
 
 export const updateHouseholdMealPollDeadline = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const dateKey = getDateKey(req.body?.date);
@@ -799,6 +925,13 @@ export const updateHouseholdMealPollDeadline = async (
       });
       return;
     }
+    if (!member.household.mealVotingEnabled) {
+      res.status(409).json({
+        success: false,
+        message: "Bình chọn món đang được tắt cho gia đình này",
+      });
+      return;
+    }
     if (dateKey < getHouseholdDateKey()) {
       res.status(409).json({
         success: false,
@@ -811,11 +944,11 @@ export const updateHouseholdMealPollDeadline = async (
       prisma,
       member.householdId,
       dateKey,
-      mealPeriod,
+      mealPeriod
     );
     await finalizeHouseholdMealPoll(prisma, poll.id);
     const closeTime = getHouseholdTimeKey(closesAt);
-    const result = await prisma.$transaction(async transaction => {
+    const result = await prisma.$transaction(async (transaction) => {
       const [currentPoll, completion] = await Promise.all([
         transaction.householdMealPoll.findUnique({
           where: { id: poll.id },
@@ -850,9 +983,7 @@ export const updateHouseholdMealPollDeadline = async (
         await transaction.householdMealPoll.update({
           where: { id: futurePoll.id },
           data: {
-            closesAt: new Date(
-              `${futurePoll.dateKey}T${closeTime}:00+07:00`,
-            ),
+            closesAt: new Date(`${futurePoll.dateKey}T${closeTime}:00+07:00`),
           },
         });
       }
@@ -893,7 +1024,7 @@ export const updateHouseholdMealPollDeadline = async (
 
 export const addMealToHouseholdPlan = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const mealId =
@@ -951,11 +1082,82 @@ export const addMealToHouseholdPlan = async (
         .json({ success: false, message: "Không tìm thấy món ăn" });
       return;
     }
+    if (!member.household.mealVotingEnabled) {
+      const result = await prisma.$transaction(async (transaction) => {
+        const completion = await transaction.mealCompletion.findFirst({
+          where: { householdId: member.householdId, dateKey, mealPeriod },
+          select: { id: true },
+        });
+        if (completion) {
+          return { error: "PERIOD_COMPLETED" as const };
+        }
+        const plannedMeal = await transaction.householdPlannedMeal.upsert({
+          where: {
+            householdId_dateKey_mealPeriod_mealId: {
+              householdId: member.householdId,
+              dateKey,
+              mealPeriod,
+              mealId,
+            },
+          },
+          update: { servings },
+          create: {
+            householdId: member.householdId,
+            addedByUserId: userId,
+            mealId,
+            dateKey,
+            mealPeriod,
+            servings,
+          },
+          select: { id: true, createdAt: true },
+        });
+        await createHouseholdNotifications(transaction, {
+          householdId: member.householdId,
+          excludeUserId: userId,
+          eventKey: `${dateKey}:${mealPeriod}:meal-plan-added:${mealId}`,
+          type: "MEAL_PLAN_UPDATED",
+          title: "Thực đơn gia đình đã được cập nhật",
+          body: `${meal.name} đã được thêm trực tiếp vào ${getMealPeriodLabel(
+            mealPeriod
+          )} ngày ${dateKey.split("-").reverse().join("/")}.`,
+          data: { householdId: member.householdId, date: dateKey, mealPeriod },
+        });
+        return { plannedMeal };
+      });
+      if ("error" in result) {
+        res.status(409).json({
+          success: false,
+          message: "Bữa ăn đã được xác nhận và không thể thay đổi",
+        });
+        return;
+      }
+      res.status(201).json({
+        success: true,
+        data: {
+          id: result.plannedMeal.id,
+          date: dateKey,
+          mealPeriod,
+          servings,
+          proposedAt: result.plannedMeal.createdAt,
+          addedDirectlyToPlan: true,
+          closesAt: null,
+          meal: {
+            id: meal.id,
+            name: meal.name,
+            description: meal.description,
+            imageUrl: meal.imageUrl,
+            category: meal.category,
+          },
+          nutritionSummary: calculateNutritionSummary(meal, servings),
+        },
+      });
+      return;
+    }
     const poll = await ensureHouseholdMealPoll(
       prisma,
       member.householdId,
       dateKey,
-      mealPeriod,
+      mealPeriod
     );
     await finalizeHouseholdMealPoll(prisma, poll.id);
     let option:
@@ -990,12 +1192,9 @@ export const addMealToHouseholdPlan = async (
             if (completion) {
               return { error: "PERIOD_COMPLETED" as const };
             }
-            if (
-              currentPoll.closedAt ||
-              currentPoll.closesAt <= new Date()
-            ) {
-              const plannedMeal =
-                await transaction.householdPlannedMeal.create({
+            if (currentPoll.closedAt || currentPoll.closesAt <= new Date()) {
+              const plannedMeal = await transaction.householdPlannedMeal.create(
+                {
                   data: {
                     householdId: member.householdId,
                     addedByUserId: userId,
@@ -1005,14 +1204,19 @@ export const addMealToHouseholdPlan = async (
                     servings,
                   },
                   select: { id: true, createdAt: true },
-                });
+                }
+              );
               await createHouseholdNotifications(transaction, {
                 householdId: member.householdId,
                 excludeUserId: userId,
                 eventKey: `${poll.id}:plan-added:${mealId}`,
                 type: "MEAL_PLAN_UPDATED",
                 title: "Thực đơn gia đình đã được cập nhật",
-                body: `${meal.name} đã được thêm trực tiếp vào ${getMealPeriodLabel(mealPeriod)} ngày ${dateKey.split("-").reverse().join("/")}.`,
+                body: `${
+                  meal.name
+                } đã được thêm trực tiếp vào ${getMealPeriodLabel(
+                  mealPeriod
+                )} ngày ${dateKey.split("-").reverse().join("/")}.`,
                 data: {
                   householdId: member.householdId,
                   date: dateKey,
@@ -1048,7 +1252,9 @@ export const addMealToHouseholdPlan = async (
                 existingOptionCount === 0
                   ? "Bình chọn món ăn đã mở"
                   : "Có món mới trong bình chọn",
-              body: `${meal.name} được thêm vào ${getMealPeriodLabel(mealPeriod)} ngày ${dateKey.split("-").reverse().join("/")}.`,
+              body: `${meal.name} được thêm vào ${getMealPeriodLabel(
+                mealPeriod
+              )} ngày ${dateKey.split("-").reverse().join("/")}.`,
               data: {
                 householdId: member.householdId,
                 date: dateKey,
@@ -1061,7 +1267,7 @@ export const addMealToHouseholdPlan = async (
               closesAt: currentPoll.closesAt,
             };
           },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
         );
         break;
       } catch (error) {
@@ -1098,8 +1304,7 @@ export const addMealToHouseholdPlan = async (
         date: dateKey,
         mealPeriod,
         servings,
-        proposedAt:
-          option.option?.createdAt ?? option.plannedMeal?.createdAt,
+        proposedAt: option.option?.createdAt ?? option.plannedMeal?.createdAt,
         addedDirectlyToPlan: Boolean(option.plannedMeal),
         closesAt: option.closesAt,
         meal: {
@@ -1130,7 +1335,7 @@ export const addMealToHouseholdPlan = async (
 
 export const voteForHouseholdMeal = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const mealId =
@@ -1174,11 +1379,18 @@ export const voteForHouseholdMeal = async (
       });
       return;
     }
+    if (!member.household.mealVotingEnabled) {
+      res.status(409).json({
+        success: false,
+        message: "Bình chọn món đang được tắt cho gia đình này",
+      });
+      return;
+    }
     const poll = await ensureHouseholdMealPoll(
       prisma,
       member.householdId,
       dateKey,
-      mealPeriod,
+      mealPeriod
     );
     await finalizeHouseholdMealPoll(prisma, poll.id);
     const result = await recordHouseholdMealVote(
@@ -1187,10 +1399,15 @@ export const voteForHouseholdMeal = async (
       mealPeriod,
       mealId,
       userId,
-      agrees,
+      agrees
     );
     if ("error" in result) {
-      if (result.error === "POLL_CLOSED") {
+      if (result.error === "POLL_DISABLED") {
+        res.status(409).json({
+          success: false,
+          message: "Bình chọn món đang được tắt cho gia đình này",
+        });
+      } else if (result.error === "POLL_CLOSED") {
         await finalizeHouseholdMealPoll(prisma, result.pollId);
         res.status(409).json({
           success: false,
@@ -1201,7 +1418,7 @@ export const voteForHouseholdMeal = async (
           prisma,
           result.pollId,
           new Date(),
-          true,
+          true
         );
         res.status(409).json({
           success: false,
@@ -1230,7 +1447,7 @@ export const voteForHouseholdMeal = async (
 
 export const updateHouseholdMealConsumption = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const isConsumed = req.body?.isConsumed;
@@ -1266,12 +1483,15 @@ export const updateHouseholdMealConsumption = async (
       });
       return;
     }
-    if (plannedMeal.dateKey >= getHouseholdDateKey()) {
+    if (
+      member.household.mealVotingEnabled &&
+      plannedMeal.dateKey >= getHouseholdDateKey()
+    ) {
       const poll = await ensureHouseholdMealPoll(
         prisma,
         member.householdId,
         plannedMeal.dateKey,
-        plannedMeal.mealPeriod,
+        plannedMeal.mealPeriod
       );
       if (!poll.closedAt && poll.closesAt > new Date()) {
         res.status(409).json({
@@ -1339,7 +1559,7 @@ export const updateHouseholdMealConsumption = async (
 
 export const completeHouseholdMeal = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const dateKey = getDateKey(req.body?.date);
@@ -1367,32 +1587,34 @@ export const completeHouseholdMeal = async (
       return;
     }
     const now = new Date();
-    let poll = await prisma.householdMealPoll.findUnique({
-      where: {
-        householdId_dateKey_mealPeriod: {
-          householdId: member.householdId,
-          dateKey,
-          mealPeriod,
+    if (member.household.mealVotingEnabled) {
+      let poll = await prisma.householdMealPoll.findUnique({
+        where: {
+          householdId_dateKey_mealPeriod: {
+            householdId: member.householdId,
+            dateKey,
+            mealPeriod,
+          },
         },
-      },
-    });
-    if (!poll && dateKey >= getHouseholdDateKey()) {
-      poll = await ensureHouseholdMealPoll(
-        prisma,
-        member.householdId,
-        dateKey,
-        mealPeriod,
-      );
-    }
-    if (poll) {
-      if (!poll.closedAt && poll.closesAt > now) {
-        res.status(409).json({
-          success: false,
-          message: "Chỉ có thể hoàn thành bữa sau khi bình chọn kết thúc",
-        });
-        return;
+      });
+      if (!poll && dateKey >= getHouseholdDateKey()) {
+        poll = await ensureHouseholdMealPoll(
+          prisma,
+          member.householdId,
+          dateKey,
+          mealPeriod
+        );
       }
-      await finalizeHouseholdMealPoll(prisma, poll.id, now);
+      if (poll) {
+        if (!poll.closedAt && poll.closesAt > now) {
+          res.status(409).json({
+            success: false,
+            message: "Chỉ có thể hoàn thành bữa sau khi bình chọn kết thúc",
+          });
+          return;
+        }
+        await finalizeHouseholdMealPoll(prisma, poll.id, now);
+      }
     }
     const plannedMeals = await prisma.householdPlannedMeal.findMany({
       where: {
@@ -1451,7 +1673,7 @@ export const completeHouseholdMeal = async (
 
 export const deleteHouseholdPlannedMeal = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
   const plannedMealId = String(req.params.id ?? "");
@@ -1487,11 +1709,43 @@ export const deleteHouseholdPlannedMeal = async (
       });
       return;
     }
+    if (!member.household.mealVotingEnabled) {
+      const completion = await prisma.mealCompletion.findFirst({
+        where: {
+          householdId: member.householdId,
+          dateKey: plannedMeal.dateKey,
+          mealPeriod: plannedMeal.mealPeriod,
+        },
+        select: { id: true },
+      });
+      if (completion) {
+        res.status(409).json({
+          success: false,
+          message: "Bữa ăn đã được xác nhận và không thể thay đổi",
+        });
+        return;
+      }
+      const deleted = await prisma.householdPlannedMeal.deleteMany({
+        where: { id: plannedMealId, householdId: member.householdId },
+      });
+      if (deleted.count !== 1) {
+        res.status(404).json({
+          success: false,
+          message: "Không tìm thấy món trong thực đơn gia đình",
+        });
+        return;
+      }
+      res.status(200).json({
+        success: true,
+        message: "Đã xóa món khỏi thực đơn gia đình",
+      });
+      return;
+    }
     const poll = await ensureHouseholdMealPoll(
       prisma,
       member.householdId,
       plannedMeal.dateKey,
-      plannedMeal.mealPeriod,
+      plannedMeal.mealPeriod
     );
     await finalizeHouseholdMealPoll(prisma, poll.id);
     const result = await recordHouseholdMealVote(
@@ -1500,7 +1754,7 @@ export const deleteHouseholdPlannedMeal = async (
       plannedMeal.mealPeriod,
       plannedMeal.mealId,
       userId,
-      false,
+      false
     );
     if ("error" in result) {
       if (result.error === "POLL_CLOSED") {

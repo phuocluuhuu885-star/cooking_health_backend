@@ -519,6 +519,18 @@ export const updateHealthProfile = async (
     const gender = req.body?.gender as Gender;
     const activityLevel = req.body?.activityLevel as ActivityLevel;
     const goal = req.body?.goal as Goal;
+    const allowFamilyNutritionPlanning = req.body?.allowFamilyNutritionPlanning;
+
+    if (
+      allowFamilyNutritionPlanning !== undefined &&
+      typeof allowFamilyNutritionPlanning !== "boolean"
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Tùy chọn chia sẻ hồ sơ trong gia đình không hợp lệ",
+      });
+      return;
+    }
 
     if (
       !Number.isFinite(age) ||
@@ -602,6 +614,9 @@ export const updateHealthProfile = async (
           weightKg,
           activityLevel,
           goal,
+          ...(typeof allowFamilyNutritionPlanning === "boolean"
+            ? { allowFamilyNutritionPlanning }
+            : {}),
           ...metrics,
         },
         update: {
@@ -611,7 +626,19 @@ export const updateHealthProfile = async (
           weightKg,
           activityLevel,
           goal,
+          ...(typeof allowFamilyNutritionPlanning === "boolean"
+            ? { allowFamilyNutritionPlanning }
+            : {}),
           ...metrics,
+        },
+      });
+
+      await tx.healthProfileHistory.create({
+        data: {
+          userId,
+          weightKg,
+          bmi: metrics.bmi,
+          measuredAt: new Date(),
         },
       });
 
@@ -641,6 +668,44 @@ export const updateHealthProfile = async (
       success: false,
       message: "Không thể cập nhật thông tin sức khỏe",
       error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+export const getHealthProfileHistory = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      message: "Phiên đăng nhập không hợp lệ",
+    });
+    return;
+  }
+
+  try {
+    const history = await prisma.healthProfileHistory.findMany({
+      where: { userId },
+      orderBy: [{ measuredAt: "desc" }, { id: "desc" }],
+      take: 100,
+      select: {
+        id: true,
+        weightKg: true,
+        bmi: true,
+        measuredAt: true,
+      },
+    });
+    res.status(200).json({
+      success: true,
+      data: { history: history.reverse() },
+    });
+  } catch (error) {
+    console.error("Failed to load health profile history", error);
+    res.status(500).json({
+      success: false,
+      message: "Không thể tải lịch sử cân nặng và BMI",
     });
   }
 };

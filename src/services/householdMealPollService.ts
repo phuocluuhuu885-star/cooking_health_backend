@@ -215,6 +215,7 @@ export const finalizeHouseholdMealPoll = async (
 const closeDuePolls = async (now: Date) => {
   const duePolls = await schedulerPrisma.householdMealPoll.findMany({
     where: {
+      household: { mealVotingEnabled: true },
       closedAt: null,
       closesAt: { lte: now },
       options: { some: {} },
@@ -231,6 +232,7 @@ const runHouseholdMealPollScheduler = async () => {
     const now = new Date();
     const dateKey = getHouseholdDateKey(now);
     const households = await schedulerPrisma.household.findMany({
+      where: { mealVotingEnabled: true },
       select: { id: true },
     });
     for (const household of households) {

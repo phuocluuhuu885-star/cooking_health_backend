@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   changePassword,
   deleteAccount,
+  getHealthProfileHistory,
   login,
   register,
   updateAvatar,
@@ -35,6 +36,7 @@ import {
   leaveHousehold,
   removeHouseholdMember,
   updateHouseholdMealConsumption,
+  updateHouseholdMealVoting,
   updateHouseholdMealPollDeadline,
   voteForHouseholdMeal,
 } from "../controllers/householdController.js";
@@ -54,6 +56,12 @@ import {
   updateHouseholdShoppingItem,
 } from "../controllers/householdShoppingController.js";
 import {
+  createIncome,
+  deleteIncome,
+  getIncomes,
+  updateIncome,
+} from "../controllers/incomeController.js";
+import {
   createMealReview,
   getMealReviewSummaries,
   getMealReviews,
@@ -70,6 +78,27 @@ import {
   updateWalkingWorkoutProgress,
 } from "../controllers/walkingWorkoutController.js";
 import { authenticate, optionalAuthenticate } from "../middlewares/auth.js";
+import { getAiMealRecommendations } from "../controllers/aiMealRecommendationController.js";
+import { postAiMealChatMessage } from "../controllers/aiMealChatController.js";
+import { postAiMealScan } from "../controllers/aiMealScanController.js";
+import { saveWeeklyMealPlan } from "../controllers/weeklyMealPlanController.js";
+import {
+  getFamilyMealRecommendations,
+  saveFamilyWeeklyMealPlan,
+} from "../controllers/familyWeeklyMealPlanController.js";
+import {
+  addWaterIntake,
+  getWaterIntake,
+} from "../controllers/waterIntakeController.js";
+import {
+  createExpense,
+  deleteExpense,
+  deleteMealBudget,
+  getExpenses,
+  getMealBudgets,
+  updateExpense,
+  upsertMealBudget,
+} from "../controllers/expenseController.js";
 
 const router = Router();
 
@@ -97,6 +126,19 @@ router.get(
   getWalkingDailySummary,
 );
 router.get("/walking-workouts/summary", authenticate, getWalkingDailySummary);
+router.get("/water-intake", authenticate, getWaterIntake);
+router.post("/water-intake", authenticate, addWaterIntake);
+router.get("/expenses", authenticate, getExpenses);
+router.post("/expenses", authenticate, createExpense);
+router.put("/expenses/:id", authenticate, updateExpense);
+router.delete("/expenses/:id", authenticate, deleteExpense);
+router.get("/incomes", authenticate, getIncomes);
+router.post("/incomes", authenticate, createIncome);
+router.put("/incomes/:id", authenticate, updateIncome);
+router.delete("/incomes/:id", authenticate, deleteIncome);
+router.get("/meal-budgets", authenticate, getMealBudgets);
+router.put("/meal-budgets", authenticate, upsertMealBudget);
+router.delete("/meal-budgets/:mealPeriod", authenticate, deleteMealBudget);
 router.put("/walking-workouts/:id/pause", authenticate, pauseWalkingWorkout);
 router.put("/walking-workouts/:id/resume", authenticate, resumeWalkingWorkout);
 router.post("/walking-workouts/:id/finish", authenticate, finishWalkingWorkout);
@@ -111,6 +153,20 @@ router.get("/meal-plan/consumed", authenticate, getDailyConsumedMeals);
 router.post("/meal-plan/consumed", authenticate, addConsumedMealEntry);
 router.put("/meal-plan/:id/consumption", authenticate, updateMealConsumption);
 router.get("/meal-plan/report", authenticate, getConsumptionReport);
+router.post("/ai/meal-recommendations", authenticate, getAiMealRecommendations);
+router.post("/ai/chat", authenticate, postAiMealChatMessage);
+router.post("/ai/meal-scan", authenticate, postAiMealScan);
+router.post("/ai/weekly-plan", authenticate, saveWeeklyMealPlan);
+router.post(
+  "/household/ai/meal-recommendations",
+  authenticate,
+  getFamilyMealRecommendations,
+);
+router.post(
+  "/household/meal-plan/weekly",
+  authenticate,
+  saveFamilyWeeklyMealPlan,
+);
 router.get("/households/current", authenticate, getCurrentHousehold);
 router.post("/households", authenticate, createHousehold);
 router.post("/households/join", authenticate, joinHousehold);
@@ -157,6 +213,11 @@ router.put(
 );
 router.post("/household/meal-plan", authenticate, addMealToHouseholdPlan);
 router.put(
+  "/household/meal-plan/poll/enabled",
+  authenticate,
+  updateHouseholdMealVoting,
+);
+router.put(
   "/household/meal-plan/poll/deadline",
   authenticate,
   updateHouseholdMealPollDeadline,
@@ -178,5 +239,6 @@ router.delete(
   deleteHouseholdPlannedMeal,
 );
 router.post("/auth/updateHealth", authenticate, updateHealthProfile);
+router.get("/auth/health-history", authenticate, getHealthProfileHistory);
 
 export default router;
