@@ -89,6 +89,14 @@ type SocketData = {
   householdId: string | undefined;
 };
 
+const createSocketAuthError = (code: string, message: string) => {
+  const error = new Error(message) as Error & {
+    data: { code: string };
+  };
+  error.data = { code };
+  return error;
+};
+
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
 });
@@ -156,7 +164,12 @@ export const attachHouseholdChatSocket = (httpServer: HttpServer) => {
   io.use((socket, next) => {
     const token: unknown = socket.handshake.auth.token;
     if (typeof token !== "string") {
-      next(new Error("Phiên đăng nhập không hợp lệ"));
+      next(
+        createSocketAuthError(
+          "TOKEN_MISSING",
+          "Phiên đăng nhập không hợp lệ",
+        ),
+      );
       return;
     }
     try {
@@ -168,13 +181,20 @@ export const attachHouseholdChatSocket = (httpServer: HttpServer) => {
         typeof decoded.sub !== "string" ||
         !decoded.sub
       ) {
-        next(new Error("Token không hợp lệ"));
+        next(createSocketAuthError("TOKEN_INVALID", "Token không hợp lệ"));
         return;
       }
       socket.data.userId = decoded.sub;
       next();
-    } catch {
-      next(new Error("Token không hợp lệ hoặc đã hết hạn"));
+    } catch (error) {
+      const tokenExpired =
+        error instanceof Error && error.name === "TokenExpiredError";
+      next(
+        createSocketAuthError(
+          tokenExpired ? "TOKEN_EXPIRED" : "TOKEN_INVALID",
+          "Token không hợp lệ hoặc đã hết hạn",
+        ),
+      );
     }
   });
 

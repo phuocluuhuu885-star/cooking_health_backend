@@ -16,6 +16,7 @@ import {
 } from "../controllers/mealController.js";
 import {
   addConsumedMealEntry,
+  addScannedConsumedMealEntry,
   completePersonalMeal,
   addMealToPlan,
   deletePlannedMeal,
@@ -151,6 +152,11 @@ router.delete("/meal-plan/:id", authenticate, deletePlannedMeal);
 router.get("/meal-plan", authenticate, getMealPlan);
 router.get("/meal-plan/consumed", authenticate, getDailyConsumedMeals);
 router.post("/meal-plan/consumed", authenticate, addConsumedMealEntry);
+router.post(
+  "/meal-plan/scanned-consumed",
+  authenticate,
+  addScannedConsumedMealEntry
+);
 router.put("/meal-plan/:id/consumption", authenticate, updateMealConsumption);
 router.get("/meal-plan/report", authenticate, getConsumptionReport);
 router.post("/ai/meal-recommendations", authenticate, getAiMealRecommendations);

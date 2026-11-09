@@ -18,6 +18,8 @@ export type MealScanResult = {
     name: string;
     estimatedAmount: string;
     estimatedWeightG: number | null;
+    estimatedQuantity: number | null;
+    quantityUnit: string | null;
     nutrition: MealScanNutrition;
     confidence: "LOW" | "MEDIUM" | "HIGH";
   }>;
@@ -117,6 +119,13 @@ export const parseMealScanResult = (value: unknown): MealScanResult => {
       typeof component.name !== "string" ||
       typeof component.estimatedAmount !== "string" ||
       !isNonNegativeNumberOrNull(component.estimatedWeightG) ||
+      (component.estimatedQuantity !== undefined &&
+        !isNonNegativeNumberOrNull(component.estimatedQuantity)) ||
+      !(
+        typeof component.quantityUnit === "string" ||
+        component.quantityUnit === null ||
+        component.quantityUnit === undefined
+      ) ||
       !isNutrition(component.nutrition) ||
       !["LOW", "MEDIUM", "HIGH"].includes(String(component.confidence))
     ) {
@@ -126,6 +135,13 @@ export const parseMealScanResult = (value: unknown): MealScanResult => {
       name: component.name.slice(0, 100),
       estimatedAmount: component.estimatedAmount.slice(0, 100),
       estimatedWeightG: component.estimatedWeightG,
+      estimatedQuantity: isNonNegativeNumberOrNull(component.estimatedQuantity)
+        ? component.estimatedQuantity
+        : null,
+      quantityUnit:
+        typeof component.quantityUnit === "string"
+          ? component.quantityUnit.slice(0, 40)
+          : null,
       nutrition: component.nutrition,
       confidence: component.confidence as "LOW" | "MEDIUM" | "HIGH",
     };

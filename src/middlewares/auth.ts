@@ -18,6 +18,7 @@ export const authenticate = (
     if (!authHeader?.startsWith('Bearer ')) {
       res.status(401).json({
         success: false,
+        code: 'TOKEN_MISSING',
         message: 'Chưa xác thực',
       });
       return;
@@ -37,6 +38,7 @@ export const authenticate = (
     ) {
       res.status(401).json({
         success: false,
+        code: 'TOKEN_INVALID',
         message: 'Token không hợp lệ',
       });
       return;
@@ -52,9 +54,12 @@ export const authenticate = (
     next();
   } catch (error) {
     console.error('Authentication Error:', error);
+    const tokenExpired =
+      error instanceof Error && error.name === 'TokenExpiredError';
 
     res.status(401).json({
       success: false,
+      code: tokenExpired ? 'TOKEN_EXPIRED' : 'TOKEN_INVALID',
       message: 'Token không hợp lệ hoặc đã hết hạn',
     });
   }

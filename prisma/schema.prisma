@@ -64,6 +64,7 @@ model User {
   householdMealVotes     HouseholdMealVote[]
   mealCompletions        MealCompletion[]
   consumedMealEntries    ConsumedMealEntry[]
+  scannedConsumedMeals   ScannedConsumedMealEntry[]
   householdChatMessages  HouseholdChatMessage[]
   householdChatReadState HouseholdChatReadState[]
   householdNotifications HouseholdNotification[]
@@ -389,6 +390,22 @@ model ConsumedMealEntry {
   consumedAt       DateTime   @default(now())
 
   @@index([userId, consumedAt])
+}
+
+model ScannedConsumedMealEntry {
+  id               String     @id @default(cuid())
+  userId           String
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  mealPeriod       MealPeriod
+  dateKey          String     @db.VarChar(10)
+  servings         Float      @default(1)
+  nutritionSummary Json
+  scanResult       Json
+  consumedAt       DateTime   @default(now())
+
+  @@index([userId, dateKey])
+  @@index([userId, dateKey, mealPeriod])
 }
 
 model HouseholdPlannedMeal {

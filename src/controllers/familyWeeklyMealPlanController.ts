@@ -194,6 +194,7 @@ export const getFamilyMealRecommendations = async (
       householdMeals,
       personalMeals,
       manualEntries,
+      scannedEntries,
       meals,
     ] = await Promise.all([
       prisma.mealCompletion.findMany({
@@ -229,6 +230,13 @@ export const getFamilyMealRecommendations = async (
         where: {
           userId: { in: profileIds },
           consumedAt: { gte: dateRange.start, lt: dateRange.end },
+        },
+        select: { mealPeriod: true, nutritionSummary: true },
+      }),
+      prisma.scannedConsumedMealEntry.findMany({
+        where: {
+          userId: { in: profileIds },
+          dateKey: dateRange.date,
         },
         select: { mealPeriod: true, nutritionSummary: true },
       }),
@@ -309,6 +317,11 @@ export const getFamilyMealRecommendations = async (
       else unavailableNutritionItems += 1;
     });
     manualEntries.forEach((entry) => {
+      const nutrition = readSnapshotNutrition(entry.nutritionSummary);
+      if (nutrition) addNutrition(consumed, nutrition);
+      else unavailableNutritionItems += 1;
+    });
+    scannedEntries.forEach((entry) => {
       const nutrition = readSnapshotNutrition(entry.nutritionSummary);
       if (nutrition) addNutrition(consumed, nutrition);
       else unavailableNutritionItems += 1;

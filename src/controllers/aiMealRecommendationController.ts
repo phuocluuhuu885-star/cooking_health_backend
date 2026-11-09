@@ -404,6 +404,7 @@ export const getAiMealRecommendations = async (
       householdMeals,
       completions,
       manualEntries,
+      scannedEntries,
       meals,
       savedMealBudgets,
     ] = await Promise.all([
@@ -439,6 +440,13 @@ export const getAiMealRecommendations = async (
           userId,
           consumedAt: { gte: dateRange.start, lt: dateRange.end },
         },
+      }),
+      prisma.scannedConsumedMealEntry.findMany({
+        where: {
+          userId,
+          dateKey: dateRange.date,
+        },
+        select: { mealPeriod: true, nutritionSummary: true },
       }),
       prisma.meal.findMany({
         where: { category: { in: [MealType.LUNCH, MealType.DINNER] } },
@@ -524,6 +532,12 @@ export const getAiMealRecommendations = async (
       );
     }
     for (const entry of manualEntries) {
+      addSnapshot(
+        entry.mealPeriod,
+        readSnapshotNutrition(entry.nutritionSummary),
+      );
+    }
+    for (const entry of scannedEntries) {
       addSnapshot(
         entry.mealPeriod,
         readSnapshotNutrition(entry.nutritionSummary),

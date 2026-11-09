@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getMealChatIntent,
+  isMealChatFollowUp,
   isMealCraftQuestion,
   MEALCRAFT_CHAT_SCOPE_MESSAGE,
 } from "./aiMealChatService.js";
@@ -26,6 +27,43 @@ test("accepts MealCraft app help questions", () => {
   assert.equal(isMealCraftQuestion("MealCraft có tính bước chân không?"), true);
 });
 
+test("accepts greetings and polite social messages", () => {
+  for (const message of [
+    "hello",
+    "Hi!",
+    "Xin chào bạn",
+    "Chào buổi sáng",
+    "How are you?",
+    "Cảm ơn bạn",
+    "Tạm biệt",
+  ]) {
+    assert.equal(isMealCraftQuestion(message), true, message);
+  }
+});
+
+test("accepts meal recommendation follow-ups only with recommendation context", () => {
+  for (const question of [
+    "Chưa đủ, gợi ý thêm đi",
+    "Có món nào khác ít calo hơn không?",
+    "Thêm món khác cho bữa trưa",
+  ]) {
+    assert.equal(isMealChatFollowUp(question), true);
+    assert.equal(isMealCraftQuestion(question, true), true);
+    assert.equal(getMealChatIntent(question, true), "RECOMMENDATION");
+  }
+  assert.equal(isMealCraftQuestion("Chưa đủ, gợi ý thêm đi"), false);
+  assert.equal(
+    getMealChatIntent("Có món nào khác ít calo hơn không?"),
+    "RECOMMENDATION",
+  );
+  assert.equal(isMealChatFollowUp("Hello, thời tiết hôm nay thế nào?"), false);
+  assert.equal(isMealChatFollowUp("Tôi đã ăn nhiều hơn hôm nay"), false);
+  assert.equal(
+    isMealCraftQuestion("Chưa đủ, gợi ý thêm đi", false),
+    false,
+  );
+});
+
 test("rejects unrelated questions even when they mention eating", () => {
   assert.equal(
     isMealCraftQuestion("Hôm nay bên Mỹ ông tổng thống ăn gì?"),
@@ -34,6 +72,7 @@ test("rejects unrelated questions even when they mention eating", () => {
   assert.equal(isMealCraftQuestion("Messi hôm nay ăn gì?"), false);
   assert.equal(isMealCraftQuestion("Thời tiết Hà Nội hôm nay thế nào?"), false);
   assert.equal(isMealCraftQuestion("Viết giúp tôi một đoạn code."), false);
+  assert.equal(isMealCraftQuestion("Hello, thời tiết hôm nay thế nào?"), false);
   assert.match(MEALCRAFT_CHAT_SCOPE_MESSAGE, /MealCraft/);
 });
 

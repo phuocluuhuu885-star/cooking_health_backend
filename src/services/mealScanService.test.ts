@@ -43,6 +43,8 @@ test("accepts a structured estimated meal analysis", () => {
         name: "Cơm",
         estimatedAmount: "1 bát nhỏ",
         estimatedWeightG: 150,
+        estimatedQuantity: 1,
+        quantityUnit: "bát",
         nutrition: {
           caloriesKcal: 200,
           proteinG: 4,
@@ -65,6 +67,40 @@ test("accepts a structured estimated meal analysis", () => {
   assert.equal(result.dishName, "Cơm gà");
   assert.ok(result.components[0]);
   assert.equal(result.components[0].nutrition.caloriesKcal, 200);
+  assert.equal(result.components[0].estimatedQuantity, 1);
+  assert.equal(result.components[0].quantityUnit, "bát");
+});
+
+test("normalizes missing quantity estimates to null", () => {
+  const result = parseMealScanResult({
+    recognized: true,
+    dishName: "Canh rau",
+    components: [
+      {
+        name: "Nước dùng",
+        estimatedAmount: "Một ít",
+        estimatedWeightG: null,
+        nutrition: {
+          caloriesKcal: 10,
+          proteinG: 1,
+          carbohydratesG: 1,
+          fatG: 1,
+          fiberG: null,
+        },
+        confidence: "LOW",
+      },
+    ],
+    totalNutrition: {
+      caloriesKcal: 10,
+      proteinG: 1,
+      carbohydratesG: 1,
+      fatG: 1,
+      fiberG: null,
+    },
+    notes: [],
+  });
+  assert.equal(result.components[0]?.estimatedQuantity, null);
+  assert.equal(result.components[0]?.quantityUnit, null);
 });
 
 test("rejects malformed nutrition results", () => {

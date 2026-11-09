@@ -63,11 +63,27 @@ const APP_SCOPE_TERMS = [
   "ghi nhận",
 ];
 
+const isFriendlyConversation = (normalizedQuestion: string): boolean =>
+  /^(?:hi|hello|hey|alo|chào(?: bạn)?|xin chào(?: bạn)?|chào buổi (?:sáng|trưa|tối)|good (?:morning|afternoon|evening)|how are you(?: doing)?|bạn khỏe không|cảm ơn(?: bạn)?|thanks|thank you|tạm biệt|bye)[.!?,\s]*$/i.test(
+    normalizedQuestion,
+  );
+
 export type MealChatIntent =
   "INTAKE" | "TODAY_MENU" | "RECOMMENDATION" | "GENERAL";
 
-export const getMealChatIntent = (question: string): MealChatIntent => {
+export const isMealChatFollowUp = (question: string): boolean =>
+  /\b(?:more (?:meals?|food|options?|suggestions?)|another (?:meal|option)|different (?:meal|option)|what else|not enough)\b|chưa đủ|chưa phù hợp|gợi ý thêm|đề xuất thêm|thêm món|món khác|món nào nữa|còn món nào|còn lựa chọn nào|đổi món|ít calo hơn|nhiều calo hơn/.test(
+    question.toLocaleLowerCase("vi"),
+  );
+
+export const getMealChatIntent = (
+  question: string,
+  hasRecommendationContext = false,
+): MealChatIntent => {
   const normalized = question.toLocaleLowerCase("vi");
+  if (hasRecommendationContext && isMealChatFollowUp(normalized)) {
+    return "RECOMMENDATION";
+  }
   if (
     /đã (ăn|tiêu thụ|ghi nhận)|đã nạp|lượng calo|bao nhiêu calo|bao nhiêu kcal/.test(
       normalized,
@@ -77,7 +93,11 @@ export const getMealChatIntent = (question: string): MealChatIntent => {
   ) {
     return "INTAKE";
   }
-  if (/nên ăn|gợi ý|đề xuất|món nào phù hợp|ăn gì|nên chọn/.test(normalized)) {
+  if (
+    /nên ăn|gợi ý|đề xuất|món nào phù hợp|món nào khác|thêm món|lựa chọn khác|ít calo hơn|nhiều calo hơn|ăn gì|nên chọn/.test(
+      normalized,
+    )
+  ) {
     return "RECOMMENDATION";
   }
   if (
@@ -90,10 +110,19 @@ export const getMealChatIntent = (question: string): MealChatIntent => {
   return "GENERAL";
 };
 
-export const isMealCraftQuestion = (question: string): boolean => {
+export const isMealCraftQuestion = (
+  question: string,
+  hasRecommendationContext = false,
+): boolean => {
   const normalized = question.toLocaleLowerCase("vi");
   if (OUT_OF_SCOPE_TERMS.some((term) => normalized.includes(term))) {
     return false;
+  }
+  if (isFriendlyConversation(normalized)) {
+    return true;
+  }
+  if (hasRecommendationContext && isMealChatFollowUp(normalized)) {
+    return true;
   }
   const mentionsMealData = MEAL_SCOPE_TERMS.some((term) =>
     normalized.includes(term),
@@ -124,7 +153,9 @@ export const isMealCraftQuestion = (question: string): boolean => {
     normalized.includes("gợi ý món") ||
     normalized.includes("gợi ý bữa");
   const asksForMealSuggestion =
-    /ăn gì|nên chọn món|đề xuất món|gợi ý (?:món|bữa)/.test(normalized);
+    /ăn gì|nên chọn món|đề xuất món|gợi ý (?:món|bữa)|món nào khác|thêm món|còn món nào|lựa chọn khác/.test(
+      normalized,
+    );
 
   return (
     asksAboutOwnMeals ||

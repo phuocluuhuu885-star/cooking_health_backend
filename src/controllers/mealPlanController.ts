@@ -11,6 +11,10 @@ import {
   type EstimatedPriceRange,
 } from "../services/mealPriceEstimateService.js";
 import { createMealCompletionSnapshot } from "../services/mealCompletionService.js";
+import {
+  parseMealScanResult,
+  type MealScanResult,
+} from "../services/mealScanService.js";
 import "dotenv/config";
 
 const adapter = new PrismaPg({
@@ -896,6 +900,102 @@ export const addConsumedMealEntry = async (
   }
 };
 
+export const addScannedConsumedMealEntry = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const userId = req.user?.id;
+  const { mealPeriod, scanResult: rawScanResult } = req.body as {
+    mealPeriod?: unknown;
+    scanResult?: unknown;
+  };
+
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      message: "Phiên đăng nhập không hợp lệ",
+    });
+    return;
+  }
+  if (!isMealPeriod(mealPeriod)) {
+    res.status(400).json({
+      success: false,
+      message: "Bữa ăn không hợp lệ",
+    });
+    return;
+  }
+
+  let scanResult: MealScanResult;
+  try {
+    scanResult = parseMealScanResult(rawScanResult);
+  } catch {
+    res.status(400).json({
+      success: false,
+      message: "Kết quả quét món ăn không hợp lệ",
+    });
+    return;
+  }
+  if (!scanResult.recognized || !scanResult.dishName?.trim()) {
+    res.status(400).json({
+      success: false,
+      message: "Không thể ghi nhận món chưa được nhận diện",
+    });
+    return;
+  }
+
+  const totalNutrition = {
+    calories: scanResult.totalNutrition.caloriesKcal,
+    proteinG: scanResult.totalNutrition.proteinG,
+    carbsG: scanResult.totalNutrition.carbohydratesG,
+    fatG: scanResult.totalNutrition.fatG,
+    fiberG: scanResult.totalNutrition.fiberG,
+  };
+  const nutritionSummary = {
+    total: totalNutrition,
+    perServing: totalNutrition,
+    servings: 1,
+  };
+
+  try {
+    const entry = await prisma.scannedConsumedMealEntry.create({
+      data: {
+        userId,
+        name: scanResult.dishName.trim().slice(0, 120),
+        mealPeriod,
+        dateKey: getVietnamDateKey(),
+        servings: 1,
+        nutritionSummary: nutritionSummary as Prisma.InputJsonValue,
+        scanResult: scanResult as Prisma.InputJsonValue,
+      },
+    });
+    res.status(201).json({
+      success: true,
+      data: {
+        id: entry.id,
+        mealId: `scan:${entry.id}`,
+        name: entry.name,
+        imageUrl: null,
+        mealPeriod: entry.mealPeriod,
+        servings: entry.servings,
+        consumedAt: entry.consumedAt.toISOString(),
+        source: "SCANNED",
+        nutrition: {
+          calories: totalNutrition.calories,
+          proteinG: totalNutrition.proteinG,
+          carbsG: totalNutrition.carbsG,
+          fatG: totalNutrition.fatG,
+        },
+      },
+    });
+  } catch (error: unknown) {
+    console.error("ADD SCANNED CONSUMED MEAL ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Không thể ghi nhận món đã ăn",
+    });
+  }
+};
+
 export const getDailyConsumedMeals = async (
   req: Request,
   res: Response
@@ -922,8 +1022,13 @@ export const getDailyConsumedMeals = async (
   rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
   try {
-    const [personalMeals, householdMeals, dailyCompletions, manualEntries] =
-      await Promise.all([
+    const [
+      personalMeals,
+      householdMeals,
+      dailyCompletions,
+      manualEntries,
+      scannedEntries,
+    ] = await Promise.all([
         prisma.plannedMeal.findMany({
           where: {
             userId,
@@ -956,6 +1061,13 @@ export const getDailyConsumedMeals = async (
             consumedAt: { gte: rangeStart, lt: rangeEnd },
           },
           include: { meal: true },
+          orderBy: { consumedAt: "asc" },
+        }),
+        prisma.scannedConsumedMealEntry.findMany({
+          where: {
+            userId,
+            dateKey,
+          },
           orderBy: { consumedAt: "asc" },
         }),
       ]);
@@ -1033,6 +1145,17 @@ export const getDailyConsumedMeals = async (
         servings: entry.servings,
         consumedAt: entry.consumedAt,
         source: "MANUAL" as const,
+        nutrition: readSnapshotNutrition(entry.nutritionSummary),
+      })),
+      ...scannedEntries.map((entry) => ({
+        id: entry.id,
+        mealId: `scan:${entry.id}`,
+        name: entry.name,
+        imageUrl: null,
+        mealPeriod: entry.mealPeriod,
+        servings: entry.servings,
+        consumedAt: entry.consumedAt,
+        source: "SCANNED" as const,
         nutrition: readSnapshotNutrition(entry.nutritionSummary),
       })),
     ];
@@ -1152,8 +1275,13 @@ export const getConsumptionReport = async (
       dayByDate.set(date, day);
     }
 
-    const [personalMeals, householdMeals, completions, manualEntries] =
-      await Promise.all([
+    const [
+      personalMeals,
+      householdMeals,
+      completions,
+      manualEntries,
+      scannedEntries,
+    ] = await Promise.all([
         prisma.plannedMeal.findMany({
           where: {
             userId,
@@ -1191,6 +1319,13 @@ export const getConsumptionReport = async (
           where: {
             userId,
             consumedAt: { gte: rangeStart, lt: rangeEndExclusive },
+          },
+          orderBy: { consumedAt: "asc" },
+        }),
+        prisma.scannedConsumedMealEntry.findMany({
+          where: {
+            userId,
+            dateKey: { gte: startDate, lte: endDate },
           },
           orderBy: { consumedAt: "asc" },
         }),
@@ -1280,6 +1415,29 @@ export const getConsumptionReport = async (
 
     for (const entry of manualEntries) {
       const day = dayByDate.get(toDateKey(entry.consumedAt));
+      if (!day) {
+        continue;
+      }
+
+      day.consumedItems += 1;
+      const nutrition = readSnapshotNutrition(entry.nutritionSummary);
+      if (!nutrition) {
+        day.unavailableNutritionItems += 1;
+        unavailableNutritionItems += 1;
+        continue;
+      }
+
+      day.nutrition.calories += nutrition.calories;
+      day.nutrition.proteinG += nutrition.proteinG;
+      day.nutrition.carbsG += nutrition.carbsG;
+      day.nutrition.fatG += nutrition.fatG;
+      totals.calories += nutrition.calories;
+      totals.proteinG += nutrition.proteinG;
+      totals.carbsG += nutrition.carbsG;
+      totals.fatG += nutrition.fatG;
+    }
+    for (const entry of scannedEntries) {
+      const day = dayByDate.get(entry.dateKey);
       if (!day) {
         continue;
       }
