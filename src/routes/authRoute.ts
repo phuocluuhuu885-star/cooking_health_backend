@@ -52,6 +52,11 @@ import {
   voteForHouseholdMeal,
 } from "../controllers/householdController.js";
 import {
+  getHouseholdHealthOverview,
+  getHouseholdMemberHealth,
+  updateHouseholdMemberHealth,
+} from "../controllers/householdHealthController.js";
+import {
   getHouseholdChatMessages,
   getHouseholdChatUnreadCount,
   markHouseholdChatRead,
@@ -213,6 +218,21 @@ router.delete(
   "/households/:id/members/:memberId",
   authenticate,
   removeHouseholdMember,
+);
+router.get(
+  "/households/current/health",
+  authenticate,
+  getHouseholdHealthOverview,
+);
+router.get(
+  "/households/current/members/:memberId/health",
+  authenticate,
+  getHouseholdMemberHealth,
+);
+router.put(
+  "/households/current/members/:memberId/health",
+  authenticate,
+  updateHouseholdMemberHealth,
 );
 router.get("/household/meal-plan", authenticate, getHouseholdMealPlan);
 router.get("/household/chat/messages", authenticate, getHouseholdChatMessages);

@@ -530,6 +530,7 @@ export const updateHealthProfile = async (
     const activityLevel = req.body?.activityLevel as ActivityLevel;
     const goal = req.body?.goal as Goal;
     const allowFamilyNutritionPlanning = req.body?.allowFamilyNutritionPlanning;
+    const allowFamilyHealthManagement = req.body?.allowFamilyHealthManagement;
 
     if (
       allowFamilyNutritionPlanning !== undefined &&
@@ -538,6 +539,16 @@ export const updateHealthProfile = async (
       res.status(400).json({
         success: false,
         message: "Tùy chọn chia sẻ hồ sơ trong gia đình không hợp lệ",
+      });
+      return;
+    }
+    if (
+      allowFamilyHealthManagement !== undefined &&
+      typeof allowFamilyHealthManagement !== "boolean"
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Tùy chọn chia sẻ sức khỏe trong gia đình không hợp lệ",
       });
       return;
     }
@@ -627,6 +638,9 @@ export const updateHealthProfile = async (
           ...(typeof allowFamilyNutritionPlanning === "boolean"
             ? { allowFamilyNutritionPlanning }
             : {}),
+          ...(typeof allowFamilyHealthManagement === "boolean"
+            ? { allowFamilyHealthManagement }
+            : {}),
           ...metrics,
         },
         update: {
@@ -638,6 +652,9 @@ export const updateHealthProfile = async (
           goal,
           ...(typeof allowFamilyNutritionPlanning === "boolean"
             ? { allowFamilyNutritionPlanning }
+            : {}),
+          ...(typeof allowFamilyHealthManagement === "boolean"
+            ? { allowFamilyHealthManagement }
             : {}),
           ...metrics,
         },
