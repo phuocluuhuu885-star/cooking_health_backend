@@ -379,6 +379,17 @@ export const getAiMealRecommendations = async (
     });
     return;
   }
+  if (
+    req.body?.vegetarian !== undefined &&
+    typeof req.body.vegetarian !== "boolean"
+  ) {
+    res.status(400).json({
+      success: false,
+      message: "Tùy chọn món chay không hợp lệ.",
+    });
+    return;
+  }
+  const vegetarian = req.body?.vegetarian === true;
   const budget = readMealPriceBudget(req.body?.budget);
   if (!budget) {
     res.status(400).json({
@@ -449,7 +460,11 @@ export const getAiMealRecommendations = async (
         select: { mealPeriod: true, nutritionSummary: true },
       }),
       prisma.meal.findMany({
-        where: { category: { in: [MealType.LUNCH, MealType.DINNER] } },
+        where: {
+          isPublished: true,
+          category: { in: [MealType.LUNCH, MealType.DINNER] },
+          ...(vegetarian ? { isVegetarian: true } : {}),
+        },
         select: {
           id: true,
           name: true,

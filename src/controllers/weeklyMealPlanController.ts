@@ -117,7 +117,7 @@ export const saveWeeklyMealPlan = async (
   try {
     const mealIds = [...new Set(validatedItems.map((item) => item.mealId))];
     const databaseMeals = await prisma.meal.findMany({
-      where: { id: { in: mealIds } },
+      where: { id: { in: mealIds }, isPublished: true },
       select: { id: true, category: true },
     });
     const mealById = new Map(databaseMeals.map((meal) => [meal.id, meal]));

@@ -601,6 +601,7 @@ export const postAiMealChatMessage = async (
         prisma.meal.findMany({
           where: needsMealCatalog
             ? {
+                isPublished: true,
                 category: {
                   in:
                     intent === "RECOMMENDATION" && requestedPeriods.length > 0

@@ -305,6 +305,8 @@ model Meal {
   description     String?
   imageUrl        String?
   category        MealType
+  isVegetarian    Boolean  @default(false)
+  isPublished     Boolean  @default(true)
   prepTimeMinutes Int      @default(15) // Thời gian chuẩn bị
   cookTimeMinutes Int      @default(20) // Thời gian nấu
   servings        Int      @default(1) // Khẩu phần ăn chuẩn (người)

@@ -8,6 +8,7 @@ import { startConsumptionHistoryCleanup } from "./services/consumptionHistoryCle
 import { startHouseholdMealPollScheduler } from "./services/householdMealPollService.js";
 import { attachHouseholdChatSocket } from "./services/householdChatSocket.js";
 import { avatarUploadDirectory } from "./services/avatarStorage.js";
+import { fileURLToPath } from "node:url";
 
 dotenv.config();
 
@@ -15,11 +16,15 @@ const app: Application = express();
 const httpServer = createServer(app);
 attachHouseholdChatSocket(httpServer);
 const PORT = process.env.PORT || 5000;
+const adminDashboardDirectory = fileURLToPath(
+  new URL("../public/admin", import.meta.url),
+);
 
 // Middlewares
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 app.use("/uploads/avatars", express.static(avatarUploadDirectory));
+app.use("/admin", express.static(adminDashboardDirectory));
 
 // Routes
 app.use("/api", authRoutes);

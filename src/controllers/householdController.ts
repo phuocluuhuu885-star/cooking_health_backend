@@ -1072,8 +1072,8 @@ export const addMealToHouseholdPlan = async (
       });
       return;
     }
-    const meal = await prisma.meal.findUnique({
-      where: { id: mealId },
+    const meal = await prisma.meal.findFirst({
+      where: { id: mealId, isPublished: true },
       include: { ingredients: true },
     });
     if (!meal) {

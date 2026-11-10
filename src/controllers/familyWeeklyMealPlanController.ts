@@ -241,7 +241,10 @@ export const getFamilyMealRecommendations = async (
         select: { mealPeriod: true, nutritionSummary: true },
       }),
       prisma.meal.findMany({
-        where: { category: { in: [MealType.LUNCH, MealType.DINNER] } },
+        where: {
+          category: { in: [MealType.LUNCH, MealType.DINNER] },
+          isPublished: true,
+        },
         include: { ingredients: true },
       }),
     ]);

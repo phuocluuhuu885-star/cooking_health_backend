@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>MealCraft · Quản lý món ăn</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/admin" aria-label="MealCraft Admin">
+          <span class="brand-mark">M</span>
+          <span>MealCraft <small>QUẢN TRỊ</small></span>
+        </a>
+        <button id="logout-button" class="button button-quiet hidden" type="button">Đăng xuất</button>
+      </header>
+
+      <section id="login-view" class="login-view">
+        <div class="login-card">
+          <p class="eyebrow">KHU VỰC QUẢN TRỊ</p>
+          <h1>Đăng nhập quản lý</h1>
+          <p class="muted">Dùng tài khoản MealCraft có email được cấp quyền quản trị.</p>
+          <form id="login-form" class="stack">
+            <label>Email<input name="email" type="email" autocomplete="username" required /></label>
+            <label>Mật khẩu<input name="password" type="password" autocomplete="current-password" required /></label>
+            <p id="login-message" class="notice hidden" role="alert"></p>
+            <button class="button button-primary" type="submit">Đăng nhập</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="dashboard-view" class="hidden">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">NỘI DUNG</p>
+            <h1>Quản lý món ăn</h1>
+            <p class="muted">Tạo, cập nhật và ẩn món khỏi ứng dụng mà không xóa lịch sử người dùng.</p>
+          </div>
+          <button id="create-button" class="button button-primary" type="button">＋ Thêm món ăn</button>
+        </div>
+
+        <section class="panel filters" aria-label="Bộ lọc món ăn">
+          <label class="search-field">Tìm món<input id="search-input" type="search" placeholder="Tên món, mô tả hoặc nguyên liệu" /></label>
+          <label>Loại bữa
+            <select id="category-filter">
+              <option value="all">Tất cả</option>
+              <option value="BREAKFAST">Bữa sáng</option>
+              <option value="LUNCH">Bữa trưa</option>
+              <option value="DINNER">Bữa tối</option>
+              <option value="SNACK">Ăn nhẹ</option>
+            </select>
+          </label>
+          <label>Chế độ ăn
+            <select id="vegetarian-filter">
+              <option value="all">Tất cả</option>
+              <option value="true">Món chay</option>
+              <option value="false">Món thường</option>
+            </select>
+          </label>
+          <label>Trạng thái
+            <select id="published-filter">
+              <option value="all">Tất cả</option>
+              <option value="true">Đang hiển thị</option>
+              <option value="false">Đang ẩn</option>
+            </select>
+          </label>
+        </section>
+
+        <p id="dashboard-message" class="notice hidden" role="status"></p>
+        <section class="panel table-panel">
+          <div class="table-heading"><strong>Danh sách món</strong><span id="result-count" class="muted"></span></div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Món ăn</th><th>Loại</th><th>Khẩu phần</th><th>Trạng thái</th><th></th></tr></thead>
+              <tbody id="meal-rows"></tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <button id="previous-page" class="button button-quiet" type="button">Trước</button>
+            <span id="page-label" class="muted"></span>
+            <button id="next-page" class="button button-quiet" type="button">Tiếp</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="meal-dialog" class="meal-dialog">
+      <form id="meal-form" class="meal-form">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">DỮ LIỆU MÓN</p><h2 id="dialog-title">Thêm món ăn</h2></div>
+          <button id="close-dialog" class="icon-button" type="button" aria-label="Đóng">×</button>
+        </div>
+        <div class="form-grid">
+          <label class="span-two">Tên món<input name="name" maxlength="120" required /></label>
+          <label>Loại bữa
+            <select name="category" required>
+              <option value="BREAKFAST">Bữa sáng</option><option value="LUNCH">Bữa trưa</option>
+              <option value="DINNER">Bữa tối</option><option value="SNACK">Ăn nhẹ</option>
+            </select>
+          </label>
+          <label>Khẩu phần<input name="servings" type="number" min="1" max="100" step="1" required /></label>
+          <label class="span-two">Mô tả<textarea name="description" rows="2" maxlength="2000"></textarea></label>
+          <label class="span-two">URL ảnh<input name="imageUrl" type="url" maxlength="2048" placeholder="https://…" /></label>
+          <label class="check-label"><input name="isVegetarian" type="checkbox" /> Món chay</label>
+          <label>Khối lượng thành phẩm (g)<input name="finalWeightG" type="number" min="0" step="0.1" /></label>
+          <label>Chuẩn bị (phút)<input name="prepTimeMinutes" type="number" min="0" max="1440" step="1" required /></label>
+          <label>Nấu (phút)<input name="cookTimeMinutes" type="number" min="0" max="1440" step="1" required /></label>
+        </div>
+        <fieldset>
+          <legend>Dinh dưỡng trên 100 g</legend>
+          <div class="form-grid nutrition-grid">
+            <label>Năng lượng (kcal)<input name="caloriesPer100g" type="number" min="0" max="10000" step="0.1" required /></label>
+            <label>Protein (g)<input name="proteinPer100g" type="number" min="0" max="1000" step="0.1" required /></label>
+            <label>Carbohydrate (g)<input name="carbsPer100g" type="number" min="0" max="1000" step="0.1" required /></label>
+            <label>Chất béo (g)<input name="fatPer100g" type="number" min="0" max="1000" step="0.1" required /></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <div class="section-legend"><legend>Nguyên liệu</legend><button id="add-ingredient" class="text-button" type="button">＋ Thêm nguyên liệu</button></div>
+          <div id="ingredients-list" class="repeat-list"></div>
+        </fieldset>
+        <fieldset>
+          <div class="section-legend"><legend>Các bước nấu</legend><button id="add-step" class="text-button" type="button">＋ Thêm bước</button></div>
+          <div id="steps-list" class="repeat-list"></div>
+        </fieldset>
+        <p id="form-message" class="notice hidden" role="alert"></p>
+        <div class="dialog-actions">
+          <button id="cancel-dialog" class="button button-quiet" type="button">Hủy</button>
+          <button id="save-meal" class="button button-primary" type="submit">Lưu món</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="/admin/admin.js" defer></script>
+  </body>
+</html>

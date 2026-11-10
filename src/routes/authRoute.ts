@@ -15,6 +15,12 @@ import {
   searchMeals,
 } from "../controllers/mealController.js";
 import {
+  createAdminMeal,
+  getAdminMeals,
+  setAdminMealPublished,
+  updateAdminMeal,
+} from "../controllers/adminMealController.js";
+import {
   addConsumedMealEntry,
   addScannedConsumedMealEntry,
   completePersonalMeal,
@@ -79,6 +85,7 @@ import {
   updateWalkingWorkoutProgress,
 } from "../controllers/walkingWorkoutController.js";
 import { authenticate, optionalAuthenticate } from "../middlewares/auth.js";
+import { requireAdmin } from "../middlewares/requireAdmin.js";
 import { getAiMealRecommendations } from "../controllers/aiMealRecommendationController.js";
 import { postAiMealChatMessage } from "../controllers/aiMealChatController.js";
 import { postAiMealScan } from "../controllers/aiMealScanController.js";
@@ -105,6 +112,15 @@ const router = Router();
 
 router.post("/auth/register", register);
 router.post("/auth/login", login);
+router.get("/admin/meals", authenticate, requireAdmin, getAdminMeals);
+router.post("/admin/meals", authenticate, requireAdmin, createAdminMeal);
+router.put("/admin/meals/:id", authenticate, requireAdmin, updateAdminMeal);
+router.patch(
+  "/admin/meals/:id/published",
+  authenticate,
+  requireAdmin,
+  setAdminMealPublished,
+);
 router.post("/auth/changePassword", authenticate, changePassword);
 router.delete("/auth/account", authenticate, deleteAccount);
 router.put("/auth/profile", authenticate, updatePersonalInfo);

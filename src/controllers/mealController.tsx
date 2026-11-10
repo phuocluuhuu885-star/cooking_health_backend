@@ -41,8 +41,8 @@ export const getMealDetailWithServings = async (
       return;
     }
 
-    const meal = await prisma.meal.findUnique({
-      where: { id },
+    const meal = await prisma.meal.findFirst({
+      where: { id, isPublished: true },
       include: {
         ingredients: true,
         cookingSteps: { orderBy: { stepNumber: "asc" } },
@@ -82,6 +82,7 @@ export const getMealDetailWithServings = async (
         description: meal.description,
         imageUrl: meal.imageUrl,
         category: meal.category,
+        isVegetarian: meal.isVegetarian,
         servings: targetServings, // Số người ăn hiện tại
         prepTimeMinutes: meal.prepTimeMinutes,
         // Thời gian nấu tăng nhẹ thêm 15% cho mỗi người tăng thêm (quy đổi thực tế)
@@ -103,7 +104,13 @@ export const searchMeals = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { q, category, page: pageQuery, limit: limitQuery } = req.query;
+    const {
+      q,
+      category,
+      vegetarian,
+      page: pageQuery,
+      limit: limitQuery,
+    } = req.query;
 
     if (
       typeof q !== "string" ||
@@ -120,6 +127,17 @@ export const searchMeals = async (
       res.status(400).json({
         success: false,
         message: "Loại món ăn không hợp lệ",
+      });
+      return;
+    }
+    if (
+      vegetarian !== undefined &&
+      vegetarian !== "true" &&
+      vegetarian !== "false"
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Bộ lọc món chay không hợp lệ",
       });
       return;
     }
@@ -153,6 +171,7 @@ export const searchMeals = async (
 
     const keyword = q.trim();
     const where: Prisma.MealWhereInput = {
+      isPublished: true,
       OR: [
         { name: { contains: keyword, mode: "insensitive" } },
         { description: { contains: keyword, mode: "insensitive" } },
@@ -163,6 +182,7 @@ export const searchMeals = async (
         },
       ],
       ...(isMealType(category) ? { category } : {}),
+      ...(vegetarian === "true" ? { isVegetarian: true } : {}),
     };
 
     const [meals, total] = await Promise.all([
@@ -208,13 +228,28 @@ export const getAllMeals = async (req: Request, res: Response): Promise<void> =>
     const limit = Math.max(1, Number(req.query.limit) || 10);
     const search = req.query.search as string;
     const category = req.query.category as MealType;
+    const vegetarian = req.query.vegetarian;
+
+    if (
+      vegetarian !== undefined &&
+      vegetarian !== "true" &&
+      vegetarian !== "false"
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Bộ lọc món chay không hợp lệ",
+      });
+      return;
+    }
 
     const skip = (page - 1) * limit;
 
     const whereCondition: {
       name?: { contains: string; mode: "insensitive" };
       category?: MealType;
-    } = {};
+      isVegetarian?: boolean;
+      isPublished: boolean;
+    } = { isPublished: true };
 
     if (search) {
       whereCondition.name = {
@@ -224,6 +259,11 @@ export const getAllMeals = async (req: Request, res: Response): Promise<void> =>
     }
     if (category && Object.values(MealType).includes(category)) {
       whereCondition.category = category;
+    }
+    if (vegetarian === "true") {
+      whereCondition.isVegetarian = true;
+    } else if (vegetarian === "false") {
+      whereCondition.isVegetarian = false;
     }
 
     const [meals, total] = await Promise.all([

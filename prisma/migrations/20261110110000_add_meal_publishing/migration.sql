@@ -1,0 +1,2 @@
+ALTER TABLE "Meal"
+ADD COLUMN "isPublished" BOOLEAN NOT NULL DEFAULT true;

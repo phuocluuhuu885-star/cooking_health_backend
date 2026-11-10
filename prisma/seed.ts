@@ -8,6 +8,7 @@ type MealSeed = {
   description: string;
   imageUrl: string;
   category: MealType;
+  isVegetarian?: boolean;
   prepTimeMinutes: number;
   cookTimeMinutes: number;
   servings: number;
@@ -86,6 +87,7 @@ const meals: MealSeed[] = [
     imageUrl:
       "https://images.unsplash.com/photo-1517673132405-a56a62b18caf?auto=format&fit=crop&w=900&q=80",
     category: MealType.BREAKFAST,
+    isVegetarian: true,
     prepTimeMinutes: 10,
     cookTimeMinutes: 0,
     servings: 1,
@@ -288,6 +290,7 @@ const meals: MealSeed[] = [
     imageUrl:
       "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=900&q=80",
     category: MealType.DINNER,
+    isVegetarian: true,
     prepTimeMinutes: 15,
     cookTimeMinutes: 18,
     servings: 1,
@@ -393,6 +396,7 @@ const meals: MealSeed[] = [
     imageUrl:
       "https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=900&q=80",
     category: MealType.SNACK,
+    isVegetarian: true,
     prepTimeMinutes: 8,
     cookTimeMinutes: 0,
     servings: 1,
