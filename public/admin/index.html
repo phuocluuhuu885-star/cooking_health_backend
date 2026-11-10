@@ -14,10 +14,6 @@
           <span class="brand-mark">M</span>
           <span>MealCraft <small>QUẢN TRỊ</small></span>
         </a>
-        <nav id="admin-nav" class="admin-nav hidden" aria-label="Khu vực quản trị">
-          <button class="nav-button active" type="button" data-admin-view="meals" aria-pressed="true">Món ăn</button>
-          <button class="nav-button" type="button" data-admin-view="users" aria-pressed="false">Người dùng</button>
-        </nav>
         <button id="logout-button" class="button button-quiet hidden" type="button">Đăng xuất</button>
       </header>
 
@@ -36,6 +32,28 @@
       </section>
 
       <section id="dashboard-view" class="hidden">
+        <div class="dashboard-layout">
+          <aside class="sidebar">
+            <div class="sidebar-label">MENU QUẢN TRỊ</div>
+            <nav id="admin-nav" class="admin-nav" aria-label="Khu vực quản trị">
+              <button class="nav-button active" type="button" data-admin-view="meals" aria-pressed="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5zM8 8h8M8 12h8M8 16h5"/></svg>
+                <span>Món ăn</span>
+                <span class="nav-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="nav-button" type="button" data-admin-view="users" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20m6-9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-7.5a4 4 0 0 1 0 7.8m2 3.2a3.5 3.5 0 0 1 2 3.2V20"/></svg>
+                <span>Người dùng</span>
+                <span class="nav-arrow" aria-hidden="true">›</span>
+              </button>
+            </nav>
+            <div class="sidebar-note">
+              <span class="status-dot"></span>
+              <span><strong>Hệ thống hoạt động</strong><small>MealCraft Admin</small></span>
+            </div>
+          </aside>
+
+          <main class="dashboard-content">
         <div id="meals-page">
         <div class="page-heading">
           <div>
@@ -124,6 +142,8 @@
             </div>
           </section>
         </section>
+          </main>
+        </div>
       </section>
     </main>
 
