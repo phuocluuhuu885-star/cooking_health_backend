@@ -1,6 +1,21 @@
 const tokenStorageKey = "mealcraft-admin-token";
 const pageSize = 20;
-const state = { token: sessionStorage.getItem(tokenStorageKey), page: 1, totalPages: 0, totalItems: 0, meals: [], editingId: null, loading: false };
+const state = {
+  token: sessionStorage.getItem(tokenStorageKey),
+  currentUserId: sessionStorage.getItem("mealcraft-admin-user-id"),
+  page: 1,
+  totalPages: 0,
+  totalItems: 0,
+  meals: [],
+  userPage: 1,
+  userTotalPages: 0,
+  userTotalItems: 0,
+  users: [],
+  activeView: "meals",
+  editingId: null,
+  loading: false,
+  loadingUsers: false,
+};
 
 const loginView = document.getElementById("login-view");
 const dashboardView = document.getElementById("dashboard-view");
@@ -8,6 +23,7 @@ const loginForm = document.getElementById("login-form");
 const loginMessage = document.getElementById("login-message");
 const dashboardMessage = document.getElementById("dashboard-message");
 const logoutButton = document.getElementById("logout-button");
+const adminNav = document.getElementById("admin-nav");
 const mealDialog = document.getElementById("meal-dialog");
 const mealForm = document.getElementById("meal-form");
 const formMessage = document.getElementById("form-message");
@@ -33,6 +49,7 @@ function setAuthenticated(isAuthenticated) {
   loginView.classList.toggle("hidden", isAuthenticated);
   dashboardView.classList.toggle("hidden", !isAuthenticated);
   logoutButton.classList.toggle("hidden", !isAuthenticated);
+  adminNav.classList.toggle("hidden", !isAuthenticated);
 }
 
 async function requestApi(path, options = {}) {
@@ -68,7 +85,9 @@ async function submitLogin(event) {
     });
     state.token = result?.data?.user?.accessToken;
     if (!state.token) throw new Error("Đăng nhập không trả về phiên hợp lệ.");
+    state.currentUserId = result.data.user.id;
     sessionStorage.setItem(tokenStorageKey, state.token);
+    sessionStorage.setItem("mealcraft-admin-user-id", state.currentUserId);
     setAuthenticated(true);
     await loadMeals();
   } catch (error) {
@@ -80,7 +99,9 @@ async function submitLogin(event) {
 
 function logout() {
   state.token = null;
+  state.currentUserId = null;
   sessionStorage.removeItem(tokenStorageKey);
+  sessionStorage.removeItem("mealcraft-admin-user-id");
   setAuthenticated(false);
   loginForm.reset();
   showNotice(loginMessage, "");
@@ -113,6 +134,138 @@ async function loadMeals() {
   } finally {
     state.loading = false;
   }
+}
+
+function getUserFilters() {
+  return new URLSearchParams({
+    page: String(state.userPage),
+    limit: String(pageSize),
+    search: document.getElementById("user-search-input").value.trim(),
+    status: document.getElementById("user-status-filter").value,
+  });
+}
+
+async function loadUsers() {
+  if (!state.token || state.loadingUsers) return;
+  state.loadingUsers = true;
+  showNotice(document.getElementById("users-message"), "");
+  try {
+    const result = await requestApi(`/api/admin/users?${getUserFilters()}`);
+    state.users = result.data;
+    state.userTotalItems = result.pagination.totalItems;
+    state.userTotalPages = result.pagination.totalPages;
+    renderUsers();
+  } catch (error) {
+    showNotice(document.getElementById("users-message"), error.message, true);
+  } finally {
+    state.loadingUsers = false;
+  }
+}
+
+function formatCreatedAt(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Không rõ"
+    : new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium" }).format(date);
+}
+
+function createUserRow(user) {
+  const row = document.createElement("tr");
+  const accountCell = document.createElement("td");
+  const account = document.createElement("div");
+  account.className = "user-account";
+  const fullName = document.createElement("strong");
+  fullName.textContent = user.fullName || "Chưa cập nhật tên";
+  const email = document.createElement("small");
+  email.textContent = user.email;
+  account.append(fullName, email);
+  accountCell.append(account);
+
+  const createdCell = document.createElement("td");
+  createdCell.textContent = formatCreatedAt(user.createdAt);
+  const profileCell = document.createElement("td");
+  profileCell.append(
+    createBadge(
+      user.healthProfileCompleted ? "Đã hoàn thành" : "Chưa hoàn thành",
+      user.healthProfileCompleted,
+    ),
+  );
+  const statusCell = document.createElement("td");
+  statusCell.append(
+    createBadge(user.isActive ? "Đang hoạt động" : "Đã khóa", user.isActive),
+  );
+
+  const actionCell = document.createElement("td");
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "small-button";
+  action.textContent = user.isActive ? "Khóa tài khoản" : "Mở khóa";
+  action.disabled = user.id === state.currentUserId;
+  if (action.disabled) action.title = "Không thể tự khóa tài khoản đang đăng nhập.";
+  action.addEventListener("click", () => toggleUserStatus(user));
+  actionCell.append(action);
+  row.append(accountCell, createdCell, profileCell, statusCell, actionCell);
+  return row;
+}
+
+function renderUsers() {
+  const rows = state.users.map(createUserRow);
+  if (rows.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.className = "muted";
+    cell.textContent = "Không tìm thấy người dùng phù hợp.";
+    row.append(cell);
+    rows.push(row);
+  }
+  document.getElementById("user-rows").replaceChildren(...rows);
+  document.getElementById("user-result-count").textContent =
+    `${state.userTotalItems} người dùng`;
+  document.getElementById("users-page-label").textContent =
+    `Trang ${state.userPage} / ${Math.max(1, state.userTotalPages)}`;
+  document.getElementById("previous-users-page").disabled = state.userPage <= 1;
+  document.getElementById("next-users-page").disabled =
+    state.userPage >= state.userTotalPages;
+}
+
+async function toggleUserStatus(user) {
+  const isActive = !user.isActive;
+  const action = isActive ? "mở khóa" : "khóa";
+  const message = isActive
+    ? `Mở khóa tài khoản ${user.email}? Người dùng sẽ có thể đăng nhập và sử dụng ứng dụng.`
+    : `Khóa tài khoản ${user.email}? Các phiên đăng nhập hiện tại sẽ mất hiệu lực.`;
+  if (!window.confirm(message)) return;
+  try {
+    await requestApi(`/api/admin/users/${encodeURIComponent(user.id)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ isActive }),
+    });
+    await loadUsers();
+    showNotice(
+      document.getElementById("users-message"),
+      `Đã ${action} tài khoản ${user.email}.`,
+    );
+  } catch (error) {
+    showNotice(document.getElementById("users-message"), error.message, true);
+  }
+}
+
+function showAdminView(view) {
+  state.activeView = view;
+  document.getElementById("meals-page").classList.toggle("hidden", view !== "meals");
+  document.getElementById("users-page").classList.toggle("hidden", view !== "users");
+  adminNav.querySelectorAll("[data-admin-view]").forEach((button) => {
+    const isActive = button.dataset.adminView === view;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+  if (view === "users") loadUsers();
+}
+
+function handleAdminNavClick(event) {
+  const button = event.target.closest("[data-admin-view]");
+  if (button) showAdminView(button.dataset.adminView);
 }
 
 function createBadge(text, green) {
@@ -357,8 +510,32 @@ function handleSearchInput() {
   searchTimer = window.setTimeout(handleFilterChange, 250);
 }
 
+function handleUserFiltersChange() {
+  state.userPage = 1;
+  loadUsers();
+}
+
+let userSearchTimer;
+function handleUserSearchInput() {
+  window.clearTimeout(userSearchTimer);
+  userSearchTimer = window.setTimeout(handleUserFiltersChange, 250);
+}
+
+function goToPreviousUsersPage() {
+  if (state.userPage <= 1) return;
+  state.userPage -= 1;
+  loadUsers();
+}
+
+function goToNextUsersPage() {
+  if (state.userPage >= state.userTotalPages) return;
+  state.userPage += 1;
+  loadUsers();
+}
+
 loginForm.addEventListener("submit", submitLogin);
 logoutButton.addEventListener("click", logout);
+adminNav.addEventListener("click", handleAdminNavClick);
 document.getElementById("create-button").addEventListener("click", () => openMealDialog());
 document.getElementById("close-dialog").addEventListener("click", () => mealDialog.close());
 document.getElementById("cancel-dialog").addEventListener("click", () => mealDialog.close());
@@ -371,6 +548,10 @@ document.getElementById("published-filter").addEventListener("change", handleFil
 document.getElementById("search-input").addEventListener("input", handleSearchInput);
 document.getElementById("previous-page").addEventListener("click", goToPreviousPage);
 document.getElementById("next-page").addEventListener("click", goToNextPage);
+document.getElementById("user-search-input").addEventListener("input", handleUserSearchInput);
+document.getElementById("user-status-filter").addEventListener("change", handleUserFiltersChange);
+document.getElementById("previous-users-page").addEventListener("click", goToPreviousUsersPage);
+document.getElementById("next-users-page").addEventListener("click", goToNextUsersPage);
 
 setAuthenticated(Boolean(state.token));
 if (state.token) loadMeals();

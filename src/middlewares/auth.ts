@@ -6,12 +6,21 @@ import type {
 } from 'express';
 import type { AuthUser } from '../auth/authUser.js';
 import { JWT_SECRET } from '../utils.ts/jwt.js';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/prisma/client.js';
+import 'dotenv/config';
 
-export const authenticate = (
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL!,
+});
+const prisma = new PrismaClient({ adapter });
+
+export const authenticate = async (
   req: Request,
   res: Response,
   next: NextFunction,
-): void => {
+): Promise<void> => {
+  let userId: string;
   try {
     const authHeader = req.headers.authorization;
 
@@ -43,15 +52,8 @@ export const authenticate = (
       });
       return;
     }
-
-    const user: AuthUser = {
-      id: decoded.sub,
-      email: decoded.email,
-    };
-
-    req.user = user;
-
-    next();
+    userId = decoded.sub;
+    userId = decoded.sub;
   } catch (error) {
     console.error('Authentication Error:', error);
     const tokenExpired =
@@ -61,6 +63,36 @@ export const authenticate = (
       success: false,
       code: tokenExpired ? 'TOKEN_EXPIRED' : 'TOKEN_INVALID',
       message: 'Token không hợp lệ hoặc đã hết hạn',
+    });
+    return;
+  }
+
+  try {
+    const account = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, isActive: true },
+    });
+    if (!account || !account.isActive) {
+      res.status(401).json({
+        success: false,
+        code: account ? 'ACCOUNT_DISABLED' : 'ACCOUNT_NOT_FOUND',
+        message: 'Tài khoản không tồn tại hoặc đã bị khóa.',
+      });
+      return;
+    }
+
+    const user: AuthUser = {
+      id: account.id,
+      email: account.email,
+    };
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error('Authentication Account Check Error:', error);
+    res.status(503).json({
+      success: false,
+      code: 'ACCOUNT_STATUS_UNAVAILABLE',
+      message: 'Không thể xác minh trạng thái tài khoản.',
     });
   }
 };

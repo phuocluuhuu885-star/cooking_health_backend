@@ -133,6 +133,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         password: true,
         avatarUrl: true,
         createdAt: true,
+        isActive: true,
         healthProfile: true,
       },
     });
@@ -151,6 +152,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       res.status(401).json({
         success: false,
         message: "Email hoặc mật khẩu không đúng",
+      });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(403).json({
+        success: false,
+        code: "ACCOUNT_DISABLED",
+        message: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
       });
       return;
     }

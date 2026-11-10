@@ -27,6 +27,10 @@ Không cần chạy seed để bật tính năng này. Migration chỉ tạo c�
 - Tìm món theo tên, mô tả và nguyên liệu; lọc theo loại bữa, món chay và trạng thái hiển thị.
 - Tạo và cập nhật mô tả, ảnh, dinh dưỡng trên 100 g, thời gian, khẩu phần, nguyên liệu và các bước nấu.
 - Ẩn/hiện món. Ẩn món không xóa dữ liệu hoặc lịch sử gắn với món đó.
+- Tìm kiếm và phân trang danh sách người dùng; xem email, tên, ngày tạo và trạng thái hoàn thành hồ sơ (không hiển thị dữ liệu sức khỏe chi tiết).
+- Khóa/mở khóa tài khoản. Tài khoản bị khóa không thể đăng nhập; token đang hoạt động cũng bị từ chối ở API.
 - API được bảo vệ bằng JWT hiện có và kiểm tra `ADMIN_EMAILS` ở backend.
 
-Các API quản trị nằm dưới `/api/admin/meals`. Tạo và cập nhật yêu cầu toàn bộ trường món; thao tác trạng thái chỉ nhận boolean `isPublished`.
+Migration `20261110140000_add_user_account_status` thêm trạng thái tài khoản, mặc định hoạt động để giữ nguyên quyền truy cập của người dùng hiện có.
+
+Các API quản trị nằm dưới `/api/admin/meals` và `/api/admin/users`. Tạo/cập nhật món yêu cầu toàn bộ trường món; endpoint đổi trạng thái món nhận boolean `isPublished`, endpoint đổi trạng thái người dùng nhận boolean `isActive`.

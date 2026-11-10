@@ -21,6 +21,10 @@ import {
   updateAdminMeal,
 } from "../controllers/adminMealController.js";
 import {
+  getAdminUsers,
+  setAdminUserActive,
+} from "../controllers/adminUserController.js";
+import {
   addConsumedMealEntry,
   addScannedConsumedMealEntry,
   completePersonalMeal,
@@ -120,6 +124,13 @@ router.patch(
   authenticate,
   requireAdmin,
   setAdminMealPublished,
+);
+router.get("/admin/users", authenticate, requireAdmin, getAdminUsers);
+router.patch(
+  "/admin/users/:id/status",
+  authenticate,
+  requireAdmin,
+  setAdminUserActive,
 );
 router.post("/auth/changePassword", authenticate, changePassword);
 router.delete("/auth/account", authenticate, deleteAccount);

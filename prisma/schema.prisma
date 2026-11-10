@@ -52,6 +52,7 @@ model User {
   password               String
   fullName               String?
   avatarUrl              String?
+  isActive               Boolean                   @default(true)
   healthProfileCompleted Boolean                   @default(false)
   healthProfile          HealthProfile?
   healthProfileHistory   HealthProfileHistory[]

@@ -14,6 +14,10 @@
           <span class="brand-mark">M</span>
           <span>MealCraft <small>QUẢN TRỊ</small></span>
         </a>
+        <nav id="admin-nav" class="admin-nav hidden" aria-label="Khu vực quản trị">
+          <button class="nav-button active" type="button" data-admin-view="meals" aria-pressed="true">Món ăn</button>
+          <button class="nav-button" type="button" data-admin-view="users" aria-pressed="false">Người dùng</button>
+        </nav>
         <button id="logout-button" class="button button-quiet hidden" type="button">Đăng xuất</button>
       </header>
 
@@ -32,6 +36,7 @@
       </section>
 
       <section id="dashboard-view" class="hidden">
+        <div id="meals-page">
         <div class="page-heading">
           <div>
             <p class="eyebrow">NỘI DUNG</p>
@@ -82,6 +87,42 @@
             <span id="page-label" class="muted"></span>
             <button id="next-page" class="button button-quiet" type="button">Tiếp</button>
           </div>
+        </section>
+        </div>
+
+        <section id="users-page" class="hidden">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">TÀI KHOẢN</p>
+              <h1>Quản lý người dùng</h1>
+              <p class="muted">Tìm tài khoản và khóa hoặc mở khóa quyền truy cập.</p>
+            </div>
+          </div>
+          <section class="panel user-filters" aria-label="Bộ lọc người dùng">
+            <label class="search-field">Tìm người dùng<input id="user-search-input" type="search" placeholder="Tên hoặc email" /></label>
+            <label>Trạng thái tài khoản
+              <select id="user-status-filter">
+                <option value="all">Tất cả</option>
+                <option value="active">Đang hoạt động</option>
+                <option value="disabled">Đã khóa</option>
+              </select>
+            </label>
+          </section>
+          <p id="users-message" class="notice hidden" role="status"></p>
+          <section class="panel table-panel">
+            <div class="table-heading"><strong>Danh sách người dùng</strong><span id="user-result-count" class="muted"></span></div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Tài khoản</th><th>Ngày tạo</th><th>Hồ sơ sức khỏe</th><th>Trạng thái</th><th></th></tr></thead>
+                <tbody id="user-rows"></tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <button id="previous-users-page" class="button button-quiet" type="button">Trước</button>
+              <span id="users-page-label" class="muted"></span>
+              <button id="next-users-page" class="button button-quiet" type="button">Tiếp</button>
+            </div>
+          </section>
         </section>
       </section>
     </main>
