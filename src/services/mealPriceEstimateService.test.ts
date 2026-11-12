@@ -22,12 +22,16 @@ test("estimates total price from ingredient weights and scales by servings", () 
   assert.deepEqual(twoServings, { minVnd: 29_000, maxVnd: 75_000 });
 });
 
-test("uses the default budget and rejects invalid ranges", () => {
+test("uses the default budget and accepts a zero minimum budget", () => {
   assert.deepEqual(readMealPriceBudget(undefined), {
     minVnd: 30_000,
     maxVnd: 60_000,
   });
-  assert.equal(readMealPriceBudget({ minVnd: 0, maxVnd: 60_000 }), null);
+  assert.deepEqual(readMealPriceBudget({ minVnd: 0, maxVnd: 60_000 }), {
+    minVnd: 0,
+    maxVnd: 60_000,
+  });
+  assert.equal(readMealPriceBudget({ minVnd: -1, maxVnd: 60_000 }), null);
   assert.equal(readMealPriceBudget({ minVnd: 60_000, maxVnd: 30_000 }), null);
 });
 

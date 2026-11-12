@@ -272,6 +272,7 @@ model MealBudget {
   id              String     @id @default(cuid())
   mealPeriod      MealPeriod
   limitVnd        Int
+  enabled         Boolean    @default(true)
   ownerUserId     String?
   owner           User?      @relation("PersonalMealBudgetOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   householdId     String?

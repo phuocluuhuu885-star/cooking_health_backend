@@ -1,10 +1,17 @@
 # AI meal recommendations
 
 The authenticated `POST /api/ai/meal-recommendations` endpoint ranks lunch and
-dinner recipes from the MealCraft database against the user's daily nutrition
-targets and recorded intake. The server calculates nutrition and serving limits;
-Gemini may only rank the supplied database recipes and provide short reasons.
-Returned meal IDs are validated against the server's candidate list.
+dinner recipes from the MealCraft database against the user's nutrition targets
+and recorded intake. Remaining daily calories and macros are divided between
+the lunch and dinner periods that have not yet been consumed. The server
+calculates serving limits and estimated prices, excludes dishes that individually
+exceed a saved meal budget, and caps each returned meal list so its combined
+estimated maximum cost and nutrition stay within that period's allocations.
+Gemini may only rank the supplied database recipes and provide short reasons;
+the server validates and enforces the final limits.
+Saved personal or household meal budgets affect recommendations only while
+their `enabled` switch is on. With the switch off, saved budget values are not
+used for ranking or filtering.
 
 The mobile app asks for explicit consent before the first request and supports
 revoking that consent. Requests without `consent: true` are rejected. When
@@ -30,10 +37,12 @@ the preview submits selected dishes to open household polls, or adds them
 directly to the household plan when the poll has closed.
 
 The authenticated `POST /api/ai/chat` endpoint answers intake and current-menu
-questions directly from MealCraft data. Meal suggestions are ranked locally
-from the user's remaining nutrition targets and catalog meals; only general
-MealCraft questions that need a generated explanation call Gemini. This keeps
-common nutrition answers independent of model latency.
+questions from MealCraft data. For meal recommendations, Gemini may choose
+from the supplied catalog candidates, and the backend validates every returned
+meal ID. If Gemini is unavailable or returns no valid candidate IDs, the
+backend ranks eligible meals locally against the user's remaining nutrition
+and returns up to three suggestions. The chat catalog is limited to the 24
+newest published lunch and dinner recipes with usable nutrition data.
 
 Configure these variables in the backend environment (never in the mobile app):
 

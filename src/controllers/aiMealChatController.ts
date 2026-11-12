@@ -12,6 +12,7 @@ import {
   isMealCraftQuestion,
   MEALCRAFT_CHAT_SCOPE_MESSAGE,
 } from "../services/aiMealChatService.js";
+import { rankChatMealRecommendations } from "../services/mealChatRecommendationUtils.js";
 import {
   fetchGeminiWithFallback,
   getGeminiApiErrorMessage,
@@ -624,7 +625,7 @@ export const postAiMealChatMessage = async (
             fatPer100g: true,
             ingredients: { select: { name: true, amountG: true } },
           },
-          orderBy: { name: "asc" },
+          orderBy: { createdAt: "desc" },
           take: 24,
         }),
       ]);
@@ -789,6 +790,12 @@ export const postAiMealChatMessage = async (
       previousSuggestions.map(({ mealId }) => mealId)
     );
     const mealOptions = meals.flatMap((meal) => {
+      if (
+        meal.category !== MealPeriod.LUNCH &&
+        meal.category !== MealPeriod.DINNER
+      ) {
+        return [];
+      }
       if (recommendationFollowUp && remaining === null) {
         return [];
       }
@@ -838,26 +845,80 @@ export const postAiMealChatMessage = async (
         };
       });
 
+    const recommendationPeriods =
+      requestedPeriods.length > 0
+        ? requestedPeriods
+        : [MealPeriod.LUNCH, MealPeriod.DINNER];
+    const fallbackSuggestionIds = () =>
+      rankChatMealRecommendations(
+        mealOptions,
+        remaining,
+        recommendationPeriods,
+        recommendationFollowUp ? previousSuggestionIds : new Set(),
+      );
+
     processingPhase = "waiting_for_gemini";
-    const geminiResult = await getGeminiAnswer(question, {
-      date,
-      intent,
-      recommendationFollowUp,
-      conversationHistory,
-      previouslySuggestedMeals: previousSuggestedMeals,
-      dailyNutritionTargets: targets,
-      consumedToday: {
-        nutrition: consumed,
-        meals: consumedMealNames,
-        unavailableNutritionItems,
-      },
-      remainingNutritionToday: remaining,
-      ...(todaysMenu ? { todaysMenu } : {}),
-      availableMealsFromMealCraftDatabase: mealOptions.map(
-        ({ imageUrl, ...meal }) => meal
-      ),
-    });
+    let geminiResult: { answer: string; suggestedMealIds: string[] };
+    try {
+      geminiResult = await getGeminiAnswer(question, {
+        date,
+        intent,
+        recommendationFollowUp,
+        conversationHistory,
+        previouslySuggestedMeals: previousSuggestedMeals,
+        dailyNutritionTargets: targets,
+        consumedToday: {
+          nutrition: consumed,
+          meals: consumedMealNames,
+          unavailableNutritionItems,
+        },
+        remainingNutritionToday: remaining,
+        ...(todaysMenu ? { todaysMenu } : {}),
+        availableMealsFromMealCraftDatabase: mealOptions.map(
+          ({ imageUrl, ...meal }) => meal
+        ),
+      });
+    } catch (error) {
+      if (intent !== "RECOMMENDATION") throw error;
+      console.warn("AI meal chat recommendation fallback", {
+        error,
+        candidateCount: mealOptions.length,
+      });
+      geminiResult = {
+        answer: "AI đang bận, mình đã chọn món phù hợp nhất từ thư viện.",
+        suggestedMealIds: fallbackSuggestionIds(),
+      };
+    }
+
     const mealById = new Map(mealOptions.map((meal) => [meal.id, meal]));
+    const validSuggestedMealIds =
+      intent === "RECOMMENDATION"
+        ? Array.from(new Set(geminiResult.suggestedMealIds))
+            .filter((id) => mealById.has(id))
+            .slice(0, 3)
+        : [];
+    if (intent === "RECOMMENDATION" && validSuggestedMealIds.length === 0) {
+      const localSuggestions = fallbackSuggestionIds();
+      if (localSuggestions.length > 0) {
+        geminiResult = {
+          answer:
+            "Mình chưa nhận được lựa chọn món từ AI, nên đã chọn các món phù hợp nhất từ thư viện.",
+          suggestedMealIds: localSuggestions,
+        };
+      } else {
+        geminiResult = {
+          answer:
+            "Chưa tìm thấy món phù hợp trong thư viện cho bữa này. Hãy thử bữa khác hoặc kiểm tra món đã được xuất bản và có dữ liệu dinh dưỡng.",
+          suggestedMealIds: [],
+        };
+      }
+    } else if (intent === "RECOMMENDATION") {
+      geminiResult = {
+        ...geminiResult,
+        suggestedMealIds: validSuggestedMealIds,
+      };
+    }
+
     const suggestions =
       intent === "RECOMMENDATION"
         ? geminiResult.suggestedMealIds.flatMap((id) => {

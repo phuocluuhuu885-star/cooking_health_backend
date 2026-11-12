@@ -18,6 +18,7 @@ import {
   finalizeHouseholdMealPoll,
   getHouseholdDateKey,
 } from "../services/householdMealPollService.js";
+import { selectMealsWithinBudget } from "../services/mealRecommendationLimits.js";
 import { createHouseholdNotifications } from "../services/householdNotificationService.js";
 import "dotenv/config";
 
@@ -167,8 +168,8 @@ export const getFamilyMealRecommendations = async (
       return;
     }
     const savedMealBudgets = await prisma.mealBudget.findMany({
-      where: { householdId: member.householdId },
-      select: { mealPeriod: true, limitVnd: true },
+      where: { householdId: member.householdId, enabled: true },
+      select: { mealPeriod: true, limitVnd: true, enabled: true },
     });
     const mealBudgets = Object.fromEntries(
       savedMealBudgets.map(({ mealPeriod, limitVnd }) => [mealPeriod, limitVnd]),
@@ -345,7 +346,7 @@ export const getFamilyMealRecommendations = async (
         carbsG: remaining.carbsG * 0.35,
         fatG: remaining.fatG * 0.35,
       };
-      return meals
+      const rankedCandidates = meals
         .filter((meal) => meal.category === period)
         .flatMap((meal) => {
           const nutritionSummary = calculateNutritionSummary(
@@ -416,8 +417,10 @@ export const getFamilyMealRecommendations = async (
           );
           return firstOverage - secondOverage || first.score - second.score;
         })
-        .slice(0, 4)
-        .map(({ score: _score, ...recommendation }) => recommendation);
+      return selectMealsWithinBudget(
+        rankedCandidates,
+        mealBudgets[period],
+      ).map(({ score: _score, ...recommendation }) => recommendation);
     };
 
     const missingProfiles = memberIds.length - profiles.length;

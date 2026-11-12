@@ -18,6 +18,10 @@ import {
   readMealPriceBudget,
   type EstimatedPriceRange,
 } from "../services/mealPriceEstimateService.js";
+import {
+  selectMealsWithinLimits,
+  splitNutritionAcrossMeals,
+} from "../services/mealRecommendationLimits.js";
 import "dotenv/config";
 
 const adapter = new PrismaPg({
@@ -48,6 +52,7 @@ type RecommendationCandidate = {
   recommendationReason: string;
   estimatedPricePerServing: EstimatedPriceRange;
   estimatedPrice: EstimatedPriceRange;
+  recommendedNutrition: Nutrition;
   score: number;
 };
 
@@ -178,7 +183,9 @@ const getRecommendationsFromGemini = async (
   targets: Nutrition,
   consumed: Nutrition,
   remaining: Nutrition,
-  budget: EstimatedPriceRange,
+  remainingByPeriod: Record<MealPeriod, Nutrition>,
+  mealBudgets: Partial<Record<MealPeriod, number>>,
+  budget?: EstimatedPriceRange,
 ): Promise<{
   recommendations: Record<
     MealPeriod,
@@ -198,29 +205,22 @@ const getRecommendationsFromGemini = async (
     ([MealPeriod.LUNCH, MealPeriod.DINNER] as const).map((period) => [
       period,
       periodCandidates[period].map(
-        ({ meal, recommendedServings, estimatedPricePerServing }) => {
+        ({
+          meal,
+          recommendedServings,
+          estimatedPricePerServing,
+          estimatedPrice,
+          recommendedNutrition,
+        }) => {
           const perServing = meal.nutritionSummary?.perServing;
           return {
             id: meal.id,
             name: meal.name.slice(0, 100),
             servings: recommendedServings,
             nutritionPerServing: perServing,
-            recommendedNutrition: perServing
-              ? {
-                  calories: Math.round(
-                    perServing.calories * recommendedServings,
-                  ),
-                  proteinG:
-                    Math.round(perServing.proteinG * recommendedServings * 10) /
-                    10,
-                  carbsG:
-                    Math.round(perServing.carbsG * recommendedServings * 10) /
-                    10,
-                  fatG:
-                    Math.round(perServing.fatG * recommendedServings * 10) / 10,
-                }
-              : null,
+            recommendedNutrition: perServing ? recommendedNutrition : null,
             estimatedPricePerServing,
+            estimatedPrice,
           };
         },
       ),
@@ -231,13 +231,17 @@ const getRecommendationsFromGemini = async (
     "Chỉ xếp hạng các món trong danh sách được cung cấp; tuyệt đối không tạo món hoặc ID mới.",
     "Chỉ dùng số liệu dinh dưỡng đã cho. Không chẩn đoán, không đưa lời khuyên y tế và không hứa hẹn tác dụng sức khỏe.",
     'Mỗi bữa chọn tối đa 4 món. Trả lời JSON thuần theo dạng {"LUNCH":[{"mealId":"...","reason":"..."}],"DINNER":[...]}.',
-    "Lý do ngắn, tiếng Việt, tối đa 140 ký tự, nói về mức phù hợp với mục tiêu dinh dưỡng còn lại.",
+    "Lý do ngắn, tiếng Việt, tối đa 140 ký tự, nói về mức phù hợp với mục tiêu dinh dưỡng còn lại của bữa.",
     `Mục tiêu dinh dưỡng ngày: ${JSON.stringify(targets)}.`,
     `Đã tiêu thụ hôm nay: ${JSON.stringify(consumed)}.`,
     `Còn lại hôm nay: ${JSON.stringify(remaining)}.`,
-    `Ngân sách ước tính mục tiêu mỗi khẩu phần: ${JSON.stringify(
-      budget,
-    )} VND. Ưu tiên món nằm trong khoảng giá này, nhưng không tự thay đổi giá đã cung cấp.`,
+    `Phần dinh dưỡng còn lại được phân bổ theo bữa: ${JSON.stringify(remainingByPeriod)}.`,
+    `Ngân sách đã bật theo bữa (nếu có): ${JSON.stringify(mealBudgets)} VND. Giá mỗi món là ước tính cho khẩu phần được đề xuất; tổng giá các món trong từng bữa không được vượt ngân sách tương ứng.`,
+    ...(budget
+      ? [
+          `Khoảng giá bổ sung người dùng chọn: ${JSON.stringify(budget)} VND mỗi khẩu phần.`,
+        ]
+      : ["Không có khoảng giá bổ sung; ưu tiên dinh dưỡng, không tự đặt ngân sách."]),
     `Các món có sẵn trong cơ sở dữ liệu: ${JSON.stringify(mealOptions)}.`,
   ].join("\n");
 
@@ -390,14 +394,18 @@ export const getAiMealRecommendations = async (
     return;
   }
   const vegetarian = req.body?.vegetarian === true;
-  const budget = readMealPriceBudget(req.body?.budget);
-  if (!budget) {
+  const parsedBudget =
+    req.body?.budget === undefined
+      ? undefined
+      : readMealPriceBudget(req.body.budget);
+  if (req.body?.budget !== undefined && parsedBudget === null) {
     res.status(400).json({
       success: false,
       message: "Khoảng ngân sách món ăn không hợp lệ.",
     });
     return;
   }
+  const budget = parsedBudget ?? undefined;
   res.setHeader("Cache-Control", "no-store");
   const dateRange = getDateRange(req.body?.date);
   if (!dateRange) {
@@ -483,8 +491,8 @@ export const getAiMealRecommendations = async (
         },
       }),
       prisma.mealBudget.findMany({
-        where: { ownerUserId: userId },
-        select: { mealPeriod: true, limitVnd: true },
+        where: { ownerUserId: userId, enabled: true },
+        select: { mealPeriod: true, limitVnd: true, enabled: true },
       }),
     ]);
 
@@ -571,6 +579,10 @@ export const getAiMealRecommendations = async (
       carbsG: Math.max(0, targets.carbsG - consumed.carbsG),
       fatG: Math.max(0, targets.fatG - consumed.fatG),
     };
+    const remainingByPeriod = splitNutritionAcrossMeals(
+      remaining,
+      consumedPeriods,
+    );
     const mealBudgets = Object.fromEntries(
       savedMealBudgets.map(({ mealPeriod, limitVnd }) => [mealPeriod, limitVnd]),
     ) as Partial<Record<MealPeriod, number>>;
@@ -587,7 +599,7 @@ export const getAiMealRecommendations = async (
               if (!nutritionSummary) return [];
               const recommendedServings = calculateServingLimit(
                 nutritionSummary.perServing,
-                remaining,
+                remainingByPeriod[period],
               );
               if (recommendedServings < 0.3) return [];
               const recommendedNutrition = {
@@ -606,6 +618,12 @@ export const getAiMealRecommendations = async (
                 recommendedServings,
               );
               const mealBudgetVnd = mealBudgets[period];
+              if (
+                mealBudgetVnd !== undefined &&
+                estimatedPrice.maxVnd > mealBudgetVnd
+              ) {
+                return [];
+              }
               return [
                 {
                   meal: {
@@ -622,15 +640,21 @@ export const getAiMealRecommendations = async (
                   recommendationReason: "",
                   estimatedPricePerServing,
                   estimatedPrice,
+                  recommendedNutrition,
                   score:
-                    nutritionFitScore(recommendedNutrition, targets) +
-                    getBudgetDistance(estimatedPricePerServing, budget) * 0.2 +
-                    (mealBudgetVnd
-                      ? Math.max(
-                          0,
-                          estimatedPrice.maxVnd - mealBudgetVnd,
-                        ) /
-                        mealBudgetVnd
+                    nutritionFitScore(
+                      recommendedNutrition,
+                      remainingByPeriod[period],
+                    ) +
+                    (budget
+                      ? getBudgetDistance(estimatedPricePerServing, budget) *
+                        0.2
+                      : 0) +
+                    (mealBudgetVnd !== undefined
+                      ? getBudgetDistance(estimatedPrice, {
+                          minVnd: 0,
+                          maxVnd: mealBudgetVnd,
+                        }) * 0.2
                       : 0),
                 },
               ];
@@ -652,6 +676,8 @@ export const getAiMealRecommendations = async (
             targets,
             consumed,
             remaining,
+            remainingByPeriod,
+            mealBudgets,
             budget,
           )
         : {
@@ -663,7 +689,16 @@ export const getAiMealRecommendations = async (
 
     const toRecommendation = (
       period: MealPeriod,
-    ): Array<RecommendationCandidate & { recommendationReason: string }> => {
+    ): Array<
+      Pick<
+        RecommendationCandidate,
+        | "meal"
+        | "recommendedServings"
+        | "recommendationReason"
+        | "estimatedPricePerServing"
+        | "estimatedPrice"
+      >
+    > => {
       const byId = new Map(
         periodCandidates[period].map((candidate) => [
           candidate.meal.id,
@@ -682,28 +717,23 @@ export const getAiMealRecommendations = async (
             ]
           : [];
       });
-      const selected =
-        aiRanked.length > 0
-          ? aiRanked.sort((first, second) => {
-              const limit = mealBudgets[period];
-              if (!limit) return first.score - second.score;
-              const firstOverage = Math.max(
-                0,
-                first.estimatedPrice.maxVnd - limit,
-              );
-              const secondOverage = Math.max(
-                0,
-                second.estimatedPrice.maxVnd - limit,
-              );
-              return firstOverage - secondOverage || first.score - second.score;
-            })
-          : periodCandidates[period].slice(0, 4).map((candidate) => ({
-              ...candidate,
-              recommendationReason:
-                "Khẩu phần được giới hạn theo lượng dinh dưỡng còn lại trong ngày.",
-            }));
+      const aiRankedIds = new Set(aiRanked.map(({ meal }) => meal.id));
+      const orderedCandidates = [
+        ...aiRanked,
+        ...periodCandidates[period]
+          .filter(({ meal }) => !aiRankedIds.has(meal.id))
+          .map((candidate) => ({
+            ...candidate,
+            recommendationReason:
+              "Phù hợp với lượng dinh dưỡng còn lại của bữa.",
+          })),
+      ];
+      const selected = selectMealsWithinLimits(
+        orderedCandidates,
+        remainingByPeriod[period],
+        mealBudgets[period],
+      );
       return selected.map((candidate) => ({
-        ...candidate,
         meal: {
           ...candidate.meal,
           nutritionSummary: scaleNutritionSummary(
@@ -711,6 +741,8 @@ export const getAiMealRecommendations = async (
             candidate.recommendedServings,
           ),
         },
+        recommendedServings: candidate.recommendedServings,
+        recommendationReason: candidate.recommendationReason,
         estimatedPricePerServing: candidate.estimatedPricePerServing,
         estimatedPrice: candidate.estimatedPrice,
       }));
@@ -733,7 +765,7 @@ export const getAiMealRecommendations = async (
         consumedPeriods: [...consumedPeriods],
         unavailableNutritionItems,
         source: geminiUsed ? "GEMINI" : "LOCAL",
-        budget,
+        ...(budget ? { budget } : {}),
         mealBudgets,
         message:
           ranked.error ??

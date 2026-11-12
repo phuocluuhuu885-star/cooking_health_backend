@@ -434,6 +434,7 @@ export const upsertMealBudget = async (
   const scope = readScope(req.body?.scope);
   const mealPeriod = req.body?.mealPeriod;
   const limitVnd = req.body?.limitVnd;
+  const enabled = req.body?.enabled;
   if (!userId) {
     res
       .status(401)
@@ -446,7 +447,8 @@ export const upsertMealBudget = async (
     typeof limitVnd !== "number" ||
     !Number.isSafeInteger(limitVnd) ||
     limitVnd < 1 ||
-    limitVnd > 2_000_000_000
+    limitVnd > 2_000_000_000 ||
+    (enabled !== undefined && typeof enabled !== "boolean")
   ) {
     res
       .status(400)
@@ -473,9 +475,14 @@ export const upsertMealBudget = async (
             ownerUserId: owner.ownerUserId,
             mealPeriod,
             limitVnd,
+            ...(enabled !== undefined ? { enabled } : {}),
             updatedByUserId: userId,
           },
-          update: { limitVnd, updatedByUserId: userId },
+          update: {
+            limitVnd,
+            ...(enabled !== undefined ? { enabled } : {}),
+            updatedByUserId: userId,
+          },
         })
       : await prisma.mealBudget.upsert({
           where: {
@@ -488,9 +495,14 @@ export const upsertMealBudget = async (
             householdId: owner.householdId,
             mealPeriod,
             limitVnd,
+            ...(enabled !== undefined ? { enabled } : {}),
             updatedByUserId: userId,
           },
-          update: { limitVnd, updatedByUserId: userId },
+          update: {
+            limitVnd,
+            ...(enabled !== undefined ? { enabled } : {}),
+            updatedByUserId: userId,
+          },
         });
     res.status(200).json({ success: true, data: item });
   } catch (error) {

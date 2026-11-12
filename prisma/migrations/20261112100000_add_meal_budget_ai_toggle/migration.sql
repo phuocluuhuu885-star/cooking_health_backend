@@ -1,0 +1,2 @@
+ALTER TABLE "MealBudget"
+ADD COLUMN "enabled" BOOLEAN NOT NULL DEFAULT true;

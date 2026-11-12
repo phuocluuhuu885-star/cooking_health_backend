@@ -32,7 +32,7 @@ export const readMealPriceBudget = (
     typeof budget.maxVnd !== "number" ||
     !Number.isInteger(budget.minVnd) ||
     !Number.isInteger(budget.maxVnd) ||
-    budget.minVnd < 10_000 ||
+    budget.minVnd < 0 ||
     budget.maxVnd > 500_000 ||
     budget.minVnd >= budget.maxVnd
   ) {
