@@ -37,6 +37,7 @@ export const createHouseholdNotifications = async (
       title: notification.title,
       body: notification.body,
       data: notification.data,
+      pushSentAt: null,
     })),
     skipDuplicates: true,
   });

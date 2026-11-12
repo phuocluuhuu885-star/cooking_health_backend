@@ -68,6 +68,10 @@ import {
   markHouseholdNotificationRead,
 } from "../controllers/householdNotificationController.js";
 import {
+  registerPushDeviceToken,
+  unregisterPushDeviceTokens,
+} from "../controllers/pushNotificationController.js";
+import {
   getHouseholdShoppingList,
   updateHouseholdShoppingItem,
 } from "../controllers/householdShoppingController.js";
@@ -258,6 +262,8 @@ router.put(
   authenticate,
   markHouseholdNotificationRead,
 );
+router.post("/auth/push-tokens", authenticate, registerPushDeviceToken);
+router.delete("/auth/push-tokens", authenticate, unregisterPushDeviceTokens);
 router.get("/household/shopping-list", authenticate, getHouseholdShoppingList);
 router.put(
   "/household/shopping-list/:ingredientKey",

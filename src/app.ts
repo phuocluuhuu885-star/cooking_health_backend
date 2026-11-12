@@ -8,6 +8,7 @@ import { startConsumptionHistoryCleanup } from "./services/consumptionHistoryCle
 import { startHouseholdMealPollScheduler } from "./services/householdMealPollService.js";
 import { attachHouseholdChatSocket } from "./services/householdChatSocket.js";
 import { avatarUploadDirectory } from "./services/avatarStorage.js";
+import { startPushNotificationWorker } from "./services/pushNotificationService.js";
 import { fileURLToPath } from "node:url";
 
 dotenv.config();
@@ -40,4 +41,5 @@ httpServer.listen(PORT, () => {
   console.log(`🚀 Server ready at: http://localhost:${PORT}`);
   startConsumptionHistoryCleanup();
   startHouseholdMealPollScheduler();
+  startPushNotificationWorker();
 });

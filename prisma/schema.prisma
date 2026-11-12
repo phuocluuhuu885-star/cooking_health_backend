@@ -46,22 +46,27 @@ enum WalkingWorkoutStatus {
   FINISHED
 }
 
+enum PushPlatform {
+  ANDROID
+  IOS
+}
+
 model User {
-  id                     String                    @id @default(cuid())
-  email                  String                    @unique
+  id                     String                     @id @default(cuid())
+  email                  String                     @unique
   password               String
   fullName               String?
   avatarUrl              String?
-  isActive               Boolean                   @default(true)
-  healthProfileCompleted Boolean                   @default(false)
+  isActive               Boolean                    @default(true)
+  healthProfileCompleted Boolean                    @default(false)
   healthProfile          HealthProfile?
   healthProfileHistory   HealthProfileHistory[]
   plannedMeals           PlannedMeal[]
   householdMembership    HouseholdMember?
   createdInvitations     HouseholdInvitation[]
-  householdMealsAdded    HouseholdPlannedMeal[]    @relation("HouseholdMealAddedBy")
-  consumedHouseholdMeals HouseholdPlannedMeal[]    @relation("HouseholdMealConsumedBy")
-  proposedHouseholdMeals HouseholdMealPollOption[] @relation("HouseholdMealOptionProposedBy")
+  householdMealsAdded    HouseholdPlannedMeal[]     @relation("HouseholdMealAddedBy")
+  consumedHouseholdMeals HouseholdPlannedMeal[]     @relation("HouseholdMealConsumedBy")
+  proposedHouseholdMeals HouseholdMealPollOption[]  @relation("HouseholdMealOptionProposedBy")
   householdMealVotes     HouseholdMealVote[]
   mealCompletions        MealCompletion[]
   consumedMealEntries    ConsumedMealEntry[]
@@ -69,16 +74,17 @@ model User {
   householdChatMessages  HouseholdChatMessage[]
   householdChatReadState HouseholdChatReadState[]
   householdNotifications HouseholdNotification[]
-  createdAt              DateTime                  @default(now())
-  updatedAt              DateTime                  @updatedAt
+  pushDeviceTokens       PushDeviceToken[]
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
   mealReviews            MealReview[]
   walkingWorkouts        WalkingWorkout[]
   waterIntakeEntries     WaterIntakeEntry[]
-  personalExpenses      Expense[]                 @relation("PersonalExpenseOwner")
-  personalIncomes       Income[]
-  createdExpenseEntries Expense[]                 @relation("ExpenseCreator")
-  personalMealBudgets   MealBudget[]              @relation("PersonalMealBudgetOwner")
-  updatedMealBudgets   MealBudget[]              @relation("MealBudgetUpdater")
+  personalExpenses       Expense[]                  @relation("PersonalExpenseOwner")
+  personalIncomes        Income[]
+  createdExpenseEntries  Expense[]                  @relation("ExpenseCreator")
+  personalMealBudgets    MealBudget[]               @relation("PersonalMealBudgetOwner")
+  updatedMealBudgets     MealBudget[]               @relation("MealBudgetUpdater")
 }
 
 enum HouseholdRole {
@@ -165,13 +171,13 @@ model HealthProfile {
 }
 
 model HealthProfileHistory {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  weightKg   Float
-  bmi        Float
-  measuredAt DateTime @default(now())
-  createdAt  DateTime @default(now())
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weightKg         Float
+  bmi              Float
+  measuredAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
   recordedByUserId String?
 
   @@index([userId, measuredAt])
@@ -238,42 +244,42 @@ enum ExpenseCategory {
 }
 
 model Expense {
-  id              String           @id @default(cuid())
+  id              String          @id @default(cuid())
   scope           ExpenseScope
-  source          ExpenseSource    @default(MANUAL)
+  source          ExpenseSource   @default(MANUAL)
   category        ExpenseCategory
-  title           String           @db.VarChar(120)
+  title           String          @db.VarChar(120)
   amountVnd       Int
-  expenseDate     DateTime         @db.Date
-  note            String?          @db.VarChar(500)
+  expenseDate     DateTime        @db.Date
+  note            String?         @db.VarChar(500)
   mealId          String?
-  mealName        String?          @db.VarChar(120)
+  mealName        String?         @db.VarChar(120)
   mealPeriod      MealPeriod?
   ownerUserId     String?
-  owner           User?            @relation("PersonalExpenseOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  owner           User?           @relation("PersonalExpenseOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   createdByUserId String?
-  createdBy       User?            @relation("ExpenseCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdBy       User?           @relation("ExpenseCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   householdId     String?
-  household       Household?       @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  household       Household?      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@index([ownerUserId, expenseDate])
   @@index([householdId, expenseDate])
 }
 
 model MealBudget {
-  id              String      @id @default(cuid())
+  id              String     @id @default(cuid())
   mealPeriod      MealPeriod
   limitVnd        Int
   ownerUserId     String?
-  owner           User?       @relation("PersonalMealBudgetOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  owner           User?      @relation("PersonalMealBudgetOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   householdId     String?
-  household       Household?  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  household       Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
   updatedByUserId String?
-  updatedBy       User?       @relation("MealBudgetUpdater", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  updatedBy       User?      @relation("MealBudgetUpdater", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   @@unique([ownerUserId, mealPeriod])
   @@unique([householdId, mealPeriod])
@@ -494,22 +500,39 @@ model HouseholdChatReadState {
 }
 
 model HouseholdNotification {
-  id          String    @id @default(cuid())
-  householdId String
-  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  eventKey    String
-  type        String    @db.VarChar(40)
-  title       String
-  body        String
-  data        Json
-  createdAt   DateTime  @default(now())
-  readAt      DateTime?
+  id                String    @id @default(cuid())
+  householdId       String
+  household         Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventKey          String
+  type              String    @db.VarChar(40)
+  title             String
+  body              String
+  data              Json
+  pushSentAt        DateTime?
+  pushFailedAt      DateTime?
+  pushAttemptCount  Int       @default(0)
+  pushNextAttemptAt DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  readAt            DateTime?
 
   @@unique([userId, eventKey])
   @@index([userId, readAt, createdAt])
   @@index([householdId, createdAt])
+  @@index([pushSentAt, pushFailedAt, pushNextAttemptAt, createdAt], map: "HouseholdNotification_push_delivery_idx")
+}
+
+model PushDeviceToken {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String       @unique
+  platform  PushPlatform
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([userId])
 }
 
 model HouseholdShoppingItem {
