@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const MAX_AVATAR_BYTES = 512 * 1024;
@@ -18,27 +17,27 @@ const getAvatarImageFormat = (image: Buffer) => {
     image[1] === 0xd8 &&
     image[2] === 0xff
   ) {
-    return { extension: "jpg" };
+    return { extension: "jpg", contentType: "image/jpeg" };
   }
   if (
     image.length >= 8 &&
     image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
   ) {
-    return { extension: "png" };
+    return { extension: "png", contentType: "image/png" };
   }
   if (
     image.length >= 12 &&
     image.toString("ascii", 0, 4) === "RIFF" &&
     image.toString("ascii", 8, 12) === "WEBP"
   ) {
-    return { extension: "webp" };
+    return { extension: "webp", contentType: "image/webp" };
   }
   return null;
 };
 
 export const decodeAvatarImage = (
   encodedImage: unknown,
-): { image: Buffer; extension: string } => {
+): { image: Buffer; extension: string; contentType: string } => {
   if (
     typeof encodedImage !== "string" ||
     encodedImage.length === 0 ||
@@ -56,19 +55,7 @@ export const decodeAvatarImage = (
   if (!format) {
     throw new AvatarImageError("Chỉ chấp nhận ảnh JPEG, PNG hoặc WebP.");
   }
-  return { image, extension: format.extension };
-};
-
-export const saveAvatarImage = async (
-  encodedImage: unknown,
-): Promise<string> => {
-  const { image, extension } = decodeAvatarImage(encodedImage);
-  await mkdir(avatarUploadDirectory, { recursive: true });
-  const fileName = `${randomUUID()}.${extension}`;
-  await writeFile(resolve(avatarUploadDirectory, fileName), image, {
-    flag: "wx",
-  });
-  return `/uploads/avatars/${fileName}`;
+  return { image, ...format };
 };
 
 export const removeStoredAvatar = async (

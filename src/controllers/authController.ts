@@ -8,8 +8,8 @@ import { ActivityLevel, Gender, Goal } from "../generated/prisma/client.js";
 import { calculateHealthMetrics } from "../services/healthService.js";
 import {
   AvatarImageError,
+  decodeAvatarImage,
   removeStoredAvatar,
-  saveAvatarImage,
 } from "../services/avatarStorage.js";
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
@@ -453,22 +453,33 @@ export const updateAvatar = async (
     return;
   }
 
-  let newAvatarUrl: string | null = null;
   try {
-    newAvatarUrl = await saveAvatarImage(req.body?.imageBase64);
+    const { image, contentType } = decodeAvatarImage(req.body?.imageBase64);
+    const imageBytes = new Uint8Array(new ArrayBuffer(image.byteLength));
+    imageBytes.set(image);
     const previousUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { avatarUrl: true },
     });
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: { avatarUrl: newAvatarUrl },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        avatarUrl: true,
-      },
+    const newAvatarUrl = `/api/auth/profile/avatar/${encodeURIComponent(
+      userId,
+    )}?v=${Date.now()}`;
+    const user = await prisma.$transaction(async (transaction) => {
+      await transaction.userAvatar.upsert({
+        where: { userId },
+        create: { userId, image: imageBytes, contentType },
+        update: { image: imageBytes, contentType },
+      });
+      return transaction.user.update({
+        where: { id: userId },
+        data: { avatarUrl: newAvatarUrl },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          avatarUrl: true,
+        },
+      });
     });
 
     if (previousUser?.avatarUrl) {
@@ -490,11 +501,6 @@ export const updateAvatar = async (
       },
     });
   } catch (error) {
-    if (newAvatarUrl) {
-      await removeStoredAvatar(newAvatarUrl).catch((cleanupError) => {
-        console.error("Failed to clean up an uncommitted avatar", cleanupError);
-      });
-    }
     if (error instanceof AvatarImageError) {
       res.status(400).json({ success: false, message: error.message });
       return;
@@ -503,6 +509,44 @@ export const updateAvatar = async (
     res.status(500).json({
       success: false,
       message: "Không thể cập nhật ảnh đại diện",
+    });
+  }
+};
+
+export const getAvatar = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const userId = req.params.userId;
+  if (typeof userId !== "string" || userId.length === 0) {
+    res.status(400).json({
+      success: false,
+      message: "Tài khoản không hợp lệ",
+    });
+    return;
+  }
+
+  try {
+    const avatar = await prisma.userAvatar.findUnique({
+      where: { userId },
+      select: { image: true, contentType: true },
+    });
+    if (!avatar) {
+      res.status(404).json({
+        success: false,
+        message: "Không tìm thấy ảnh đại diện",
+      });
+      return;
+    }
+
+    res.setHeader("Content-Type", avatar.contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.status(200).send(Buffer.from(avatar.image));
+  } catch (error) {
+    console.error("Get Avatar Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Không thể tải ảnh đại diện",
     });
   }
 };

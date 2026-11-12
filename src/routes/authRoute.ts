@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   changePassword,
   deleteAccount,
+  getAvatar,
   getHealthProfileHistory,
   login,
   register,
@@ -145,6 +146,7 @@ router.post("/auth/changePassword", authenticate, changePassword);
 router.delete("/auth/account", authenticate, deleteAccount);
 router.put("/auth/profile", authenticate, updatePersonalInfo);
 router.put("/auth/profile/avatar", authenticate, updateAvatar);
+router.get("/auth/profile/avatar/:userId", getAvatar);
 router.get("/meal/getAll", getAllMeals);
 router.get("/meal/search", searchMeals);
 router.get(
