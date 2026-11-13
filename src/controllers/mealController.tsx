@@ -1,7 +1,12 @@
 // src/controllers/meal.controller.ts
 import type { Request, Response } from "express";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { MealType, Prisma, PrismaClient } from "../generated/prisma/client.js";
+import {
+  CommunityMealStatus,
+  MealType,
+  Prisma,
+  PrismaClient,
+} from "../generated/prisma/client.js";
 import { calculateNutritionSummary } from "../services/mealNutritionService.js";
 import "dotenv/config";
 
@@ -42,7 +47,17 @@ export const getMealDetailWithServings = async (
     }
 
     const meal = await prisma.meal.findFirst({
-      where: { id, isPublished: true },
+      where: {
+        id,
+        OR: [
+          { isPublished: true },
+          {
+            communitySource: {
+              is: { status: CommunityMealStatus.APPROVED },
+            },
+          },
+        ],
+      },
       include: {
         ingredients: true,
         cookingSteps: { orderBy: { stepNumber: "asc" } },
