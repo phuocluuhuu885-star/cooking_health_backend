@@ -46,6 +46,11 @@
                 <span>Người dùng</span>
                 <span class="nav-arrow" aria-hidden="true">›</span>
               </button>
+              <button class="nav-button" type="button" data-admin-view="community" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5zM8 8h8M8 12h8m-8 4h5"/></svg>
+                <span>Duyệt món cộng đồng</span>
+                <span class="nav-arrow" aria-hidden="true">›</span>
+              </button>
             </nav>
             <div class="sidebar-note">
               <span class="status-dot"></span>
@@ -139,6 +144,46 @@
               <button id="previous-users-page" class="button button-quiet" type="button">Trước</button>
               <span id="users-page-label" class="muted"></span>
               <button id="next-users-page" class="button button-quiet" type="button">Tiếp</button>
+            </div>
+          </section>
+        </section>
+
+        <section id="community-page" class="hidden">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">BẾP CỘNG ĐỒNG</p>
+              <h1>Quản lý món chia sẻ</h1>
+              <p class="muted">Xem ngày gửi, nội dung, ảnh và duyệt hoặc từ chối từng bài.</p>
+            </div>
+          </div>
+          <section class="panel automation-panel">
+            <div>
+              <strong>Kiểm duyệt tự động bằng AI</strong>
+              <p class="muted">AI chỉ tự duyệt hoặc từ chối khi độ tin cậy từ 95%. Bài chưa rõ sẽ chờ bạn xem.</p>
+            </div>
+            <label class="switch-label" for="auto-moderation-toggle">
+              <input id="auto-moderation-toggle" type="checkbox" />
+              Bật kiểm duyệt tự động
+            </label>
+          </section>
+          <p id="community-settings-message" class="notice hidden" role="status"></p>
+          <section class="panel community-review-panel">
+            <div class="community-review-toolbar">
+              <label>Trạng thái
+                <select id="community-status-filter">
+                  <option value="PENDING">Chờ duyệt</option>
+                  <option value="APPROVED">Đã duyệt</option>
+                  <option value="REJECTED">Đã từ chối</option>
+                </select>
+              </label>
+              <span id="community-result-count" class="muted"></span>
+            </div>
+            <p id="community-message" class="notice hidden" role="status"></p>
+            <div id="community-review-list" class="community-review-list"></div>
+            <div class="pagination">
+              <button id="previous-community-page" class="button button-quiet" type="button">Trước</button>
+              <span id="community-page-label" class="muted"></span>
+              <button id="next-community-page" class="button button-quiet" type="button">Tiếp</button>
             </div>
           </section>
         </section>

@@ -51,6 +51,17 @@ enum PushPlatform {
   IOS
 }
 
+enum CommunityMealStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CommunityModerationSource {
+  ADMIN
+  AI
+}
+
 model User {
   id                     String                     @id @default(cuid())
   email                  String                     @unique
@@ -81,6 +92,8 @@ model User {
   mealReviews            MealReview[]
   communityMeals         CommunityMeal[]
   communityMealReviews   CommunityMealReview[]
+  communityMealFavorites CommunityMealFavorite[]
+  reviewedCommunityMeals CommunityMeal[] @relation("CommunityMealModerator")
   walkingWorkouts        WalkingWorkout[]
   waterIntakeEntries     WaterIntakeEntry[]
   personalExpenses       Expense[]                  @relation("PersonalExpenseOwner")
@@ -394,12 +407,20 @@ model CommunityMeal {
   nutrition    Json
   image        Bytes
   contentType  String                @db.VarChar(30)
+  status       CommunityMealStatus   @default(PENDING)
+  moderationSource CommunityModerationSource?
+  moderationReason String?           @db.VarChar(500)
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?                 @relation("CommunityMealModerator", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviews      CommunityMealReview[]
+  favorites    CommunityMealFavorite[]
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
 
   @@index([createdAt])
   @@index([creatorId, createdAt])
+  @@index([status, createdAt])
 }
 
 model CommunityMealReview {
@@ -415,6 +436,24 @@ model CommunityMealReview {
 
   @@unique([mealId, userId])
   @@index([mealId, createdAt])
+}
+
+model CommunityMealFavorite {
+  id        String        @id @default(cuid())
+  mealId    String
+  meal      CommunityMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@unique([mealId, userId])
+  @@index([userId, createdAt])
+}
+
+model CommunityModerationSettings {
+  id                    Int      @id
+  autoModerationEnabled Boolean  @default(false)
+  updatedAt             DateTime @updatedAt
 }
 
 model PlannedMeal {

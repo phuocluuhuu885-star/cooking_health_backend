@@ -11,10 +11,15 @@ const state = {
   userTotalPages: 0,
   userTotalItems: 0,
   users: [],
+  communityMeals: [],
+  communityPage: 1,
+  communityTotalPages: 0,
   activeView: "meals",
   editingId: null,
   loading: false,
   loadingUsers: false,
+  loadingCommunityMeals: false,
+  savingModerationSettings: false,
 };
 
 const loginView = document.getElementById("login-view");
@@ -31,6 +36,7 @@ const saveMealButton = document.getElementById("save-meal");
 const mealRows = document.getElementById("meal-rows");
 const ingredientsList = document.getElementById("ingredients-list");
 const stepsList = document.getElementById("steps-list");
+const communityReviewList = document.getElementById("community-review-list");
 
 const categoryLabels = {
   BREAKFAST: "Bữa sáng",
@@ -162,6 +168,209 @@ async function loadUsers() {
   }
 }
 
+async function loadCommunityMeals() {
+  if (!state.token || state.loadingCommunityMeals) return;
+  state.loadingCommunityMeals = true;
+  showNotice(document.getElementById("community-message"), "");
+  const status = document.getElementById("community-status-filter").value;
+  const params = new URLSearchParams({
+    page: String(state.communityPage),
+    limit: String(pageSize),
+    status,
+  });
+  try {
+    const result = await requestApi(`/api/admin/community-meals?${params}`);
+    state.communityMeals = result.data;
+    state.communityTotalPages = result.pagination.totalPages;
+    document.getElementById("community-result-count").textContent =
+      `${result.pagination.totalItems} bài`;
+    document.getElementById("community-page-label").textContent =
+      `Trang ${state.communityPage} / ${Math.max(1, state.communityTotalPages)}`;
+    document.getElementById("previous-community-page").disabled =
+      state.communityPage <= 1;
+    document.getElementById("next-community-page").disabled =
+      state.communityPage >= state.communityTotalPages;
+    renderCommunityMeals();
+  } catch (error) {
+    showNotice(document.getElementById("community-message"), error.message, true);
+  } finally {
+    state.loadingCommunityMeals = false;
+  }
+}
+
+function createCommunityMealCard(meal) {
+  const card = document.createElement("article");
+  card.className = "community-review-card";
+
+  const image = document.createElement("img");
+  image.className = "community-review-image";
+  image.alt = `Ảnh món ${meal.name}`;
+  image.src = `data:${meal.contentType};base64,${meal.imageBase64}`;
+  image.loading = "lazy";
+
+  const body = document.createElement("div");
+  body.className = "community-review-content";
+  const heading = document.createElement("div");
+  heading.className = "community-review-heading";
+  const title = document.createElement("h2");
+  title.textContent = meal.name;
+  const date = document.createElement("span");
+  date.className = "badge badge-muted";
+  date.textContent = `Gửi ngày ${formatCreatedAt(meal.createdAt)}`;
+  heading.append(title, date);
+
+  const author = document.createElement("p");
+  author.className = "muted";
+  author.textContent = `${meal.creatorName} · ${meal.creatorEmail}`;
+  const description = document.createElement("p");
+  description.textContent = meal.description || "Không có mô tả.";
+  const ingredientsTitle = document.createElement("strong");
+  ingredientsTitle.textContent = "Nguyên liệu";
+  const ingredients = document.createElement("p");
+  ingredients.textContent = Array.isArray(meal.ingredients)
+    ? meal.ingredients.join(", ")
+    : JSON.stringify(meal.ingredients);
+  const instructionsTitle = document.createElement("strong");
+  instructionsTitle.textContent = "Cách nấu";
+  const instructions = document.createElement("p");
+  instructions.className = "community-instructions";
+  instructions.textContent = meal.instructions;
+  const nutrition = document.createElement("small");
+  nutrition.className = "muted";
+  nutrition.textContent = `Dinh dưỡng AI: ${JSON.stringify(meal.nutrition)}`;
+  body.append(
+    heading,
+    author,
+    description,
+    ingredientsTitle,
+    ingredients,
+    instructionsTitle,
+    instructions,
+    nutrition,
+  );
+  card.append(image, body);
+
+  if (meal.moderationReason) {
+    const reason = document.createElement("p");
+    reason.className = "community-moderation-reason";
+    reason.textContent = `Ghi chú kiểm duyệt: ${meal.moderationReason}`;
+    body.append(reason);
+  }
+  if (meal.status === "PENDING") {
+    const actions = document.createElement("div");
+    actions.className = "row-actions community-actions";
+    const approveButton = document.createElement("button");
+    approveButton.type = "button";
+    approveButton.className = "small-button approve-button";
+    approveButton.textContent = "Duyệt bài";
+    approveButton.addEventListener("click", () =>
+      moderateCommunityMeal(meal, "APPROVED"),
+    );
+    const rejectButton = document.createElement("button");
+    rejectButton.type = "button";
+    rejectButton.className = "small-button reject-button";
+    rejectButton.textContent = "Từ chối";
+    rejectButton.addEventListener("click", () =>
+      moderateCommunityMeal(meal, "REJECTED"),
+    );
+    actions.append(approveButton, rejectButton);
+    body.append(actions);
+  }
+  return card;
+}
+
+function renderCommunityMeals() {
+  const cards = state.communityMeals.map(createCommunityMealCard);
+  communityReviewList.replaceChildren(...cards);
+  if (cards.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "community-empty muted";
+    empty.textContent =
+      document.getElementById("community-status-filter").value === "PENDING"
+        ? "Không có món nào đang chờ duyệt."
+        : "Không có bài đăng trong trạng thái này.";
+    communityReviewList.append(empty);
+  }
+}
+
+async function moderateCommunityMeal(meal, status) {
+  let reason = "";
+  if (status === "REJECTED") {
+    reason = window.prompt(`Lý do từ chối “${meal.name}”?`)?.trim() || "";
+    if (!reason) {
+      showNotice(
+        document.getElementById("community-message"),
+        "Cần nhập lý do từ chối để người đăng biết cách chỉnh sửa.",
+        true,
+      );
+      return;
+    }
+  }
+  try {
+    const result = await requestApi(
+      `/api/admin/community-meals/${encodeURIComponent(meal.id)}/moderation`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status, reason }),
+      },
+    );
+    await loadCommunityMeals();
+    showNotice(document.getElementById("community-message"), result.message);
+  } catch (error) {
+    showNotice(document.getElementById("community-message"), error.message, true);
+  }
+}
+
+async function loadModerationSettings() {
+  showNotice(document.getElementById("community-settings-message"), "");
+  try {
+    const result = await requestApi(
+      "/api/admin/community-meals/moderation-settings",
+    );
+    document.getElementById("auto-moderation-toggle").checked =
+      result.data.autoModerationEnabled;
+  } catch (error) {
+    showNotice(
+      document.getElementById("community-settings-message"),
+      error.message,
+      true,
+    );
+  }
+}
+
+async function saveModerationSettings(event) {
+  if (state.savingModerationSettings) return;
+  const toggle = event.currentTarget;
+  state.savingModerationSettings = true;
+  toggle.disabled = true;
+  try {
+    const result = await requestApi(
+      "/api/admin/community-meals/moderation-settings",
+      {
+        method: "PUT",
+        body: JSON.stringify({ autoModerationEnabled: toggle.checked }),
+      },
+    );
+    toggle.checked = result.data.autoModerationEnabled;
+    showNotice(
+      document.getElementById("community-settings-message"),
+      toggle.checked
+        ? "Đã bật kiểm duyệt tự động. Bài chưa đủ tin cậy sẽ chờ bạn duyệt."
+        : "Đã tắt kiểm duyệt tự động. Bài mới sẽ chờ bạn duyệt.",
+    );
+  } catch (error) {
+    toggle.checked = !toggle.checked;
+    showNotice(
+      document.getElementById("community-settings-message"),
+      error.message,
+      true,
+    );
+  } finally {
+    state.savingModerationSettings = false;
+    toggle.disabled = false;
+  }
+}
+
 function formatCreatedAt(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -255,12 +464,17 @@ function showAdminView(view) {
   state.activeView = view;
   document.getElementById("meals-page").classList.toggle("hidden", view !== "meals");
   document.getElementById("users-page").classList.toggle("hidden", view !== "users");
+  document.getElementById("community-page").classList.toggle("hidden", view !== "community");
   adminNav.querySelectorAll("[data-admin-view]").forEach((button) => {
     const isActive = button.dataset.adminView === view;
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });
   if (view === "users") loadUsers();
+  if (view === "community") {
+    loadCommunityMeals();
+    loadModerationSettings();
+  }
 }
 
 function handleAdminNavClick(event) {
@@ -533,6 +747,23 @@ function goToNextUsersPage() {
   loadUsers();
 }
 
+function handleCommunityStatusChange() {
+  state.communityPage = 1;
+  loadCommunityMeals();
+}
+
+function goToPreviousCommunityPage() {
+  if (state.communityPage <= 1) return;
+  state.communityPage -= 1;
+  loadCommunityMeals();
+}
+
+function goToNextCommunityPage() {
+  if (state.communityPage >= state.communityTotalPages) return;
+  state.communityPage += 1;
+  loadCommunityMeals();
+}
+
 loginForm.addEventListener("submit", submitLogin);
 logoutButton.addEventListener("click", logout);
 adminNav.addEventListener("click", handleAdminNavClick);
@@ -552,6 +783,10 @@ document.getElementById("user-search-input").addEventListener("input", handleUse
 document.getElementById("user-status-filter").addEventListener("change", handleUserFiltersChange);
 document.getElementById("previous-users-page").addEventListener("click", goToPreviousUsersPage);
 document.getElementById("next-users-page").addEventListener("click", goToNextUsersPage);
+document.getElementById("community-status-filter").addEventListener("change", handleCommunityStatusChange);
+document.getElementById("previous-community-page").addEventListener("click", goToPreviousCommunityPage);
+document.getElementById("next-community-page").addEventListener("click", goToNextCommunityPage);
+document.getElementById("auto-moderation-toggle").addEventListener("change", saveModerationSettings);
 
 setAuthenticated(Boolean(state.token));
 if (state.token) loadMeals();

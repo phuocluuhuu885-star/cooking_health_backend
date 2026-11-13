@@ -116,10 +116,16 @@ import {
   analyzeCommunityMealNutrition,
   createCommunityMeal,
   deleteCommunityMeal,
+  getAdminCommunityMeals,
+  getCommunityModerationSettings,
   getCommunityMeal,
   getCommunityMealImage,
   getCommunityMealReviews,
   getCommunityMeals,
+  moderateAdminCommunityMeal,
+  favoriteCommunityMeal,
+  updateCommunityModerationSettings,
+  unfavoriteCommunityMeal,
   upsertCommunityMealReview,
 } from "../controllers/communityMealController.js";
 import {
@@ -167,6 +173,36 @@ router.post(
 router.get("/community-meals", authenticate, getCommunityMeals);
 router.post("/community-meals", authenticate, createCommunityMeal);
 router.get(
+  "/admin/community-meals",
+  authenticate,
+  requireAdmin,
+  getAdminCommunityMeals,
+);
+router.patch(
+  "/admin/community-meals/:id/moderation",
+  authenticate,
+  requireAdmin,
+  moderateAdminCommunityMeal,
+);
+router.get(
+  "/admin/community-meals/moderation-settings",
+  authenticate,
+  requireAdmin,
+  getCommunityModerationSettings,
+);
+router.put(
+  "/admin/community-meals/moderation-settings",
+  authenticate,
+  requireAdmin,
+  updateCommunityModerationSettings,
+);
+router.put("/community-meals/:id/favorite", authenticate, favoriteCommunityMeal);
+router.delete(
+  "/community-meals/:id/favorite",
+  authenticate,
+  unfavoriteCommunityMeal,
+);
+router.get(
   "/community-meals/:id/reviews",
   authenticate,
   getCommunityMealReviews,
@@ -176,7 +212,7 @@ router.post(
   authenticate,
   upsertCommunityMealReview,
 );
-router.get("/community-meals/:id/image", getCommunityMealImage);
+router.get("/community-meals/:id/image", authenticate, getCommunityMealImage);
 router.get("/community-meals/:id", authenticate, getCommunityMeal);
 router.delete("/community-meals/:id", authenticate, deleteCommunityMeal);
 router.get(
