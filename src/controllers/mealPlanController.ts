@@ -15,6 +15,7 @@ import {
   parseMealScanResult,
   type MealScanResult,
 } from "../services/mealScanService.js";
+import { getOrCreateCommunityMealPlanCopy } from "../services/communityMealPlanCopy.js";
 import "dotenv/config";
 
 const adapter = new PrismaPg({
@@ -101,6 +102,7 @@ type PlannedMealResponseItem = {
   consumedAt: Date | null;
   meal: {
     id: string;
+    communityMealId: string | null;
     name: string;
     description: string | null;
     imageUrl: string | null;
@@ -216,23 +218,32 @@ export const addMealToPlan = async (
       return;
     }
 
-    const { mealId: submittedMealId, mealPeriod } = req.body ?? {};
+    const {
+      mealId: submittedMealId,
+      communityMealId: submittedCommunityMealId,
+      mealPeriod,
+    } = req.body ?? {};
+    const communityMealId =
+      typeof submittedCommunityMealId === "string"
+        ? submittedCommunityMealId.trim()
+        : "";
+    const hasSubmittedMealId =
+      typeof submittedMealId === "string" &&
+      submittedMealId.trim().length > 0;
     const servingsValue = req.body?.servings ?? 1;
     const servings =
       typeof servingsValue === "number" ? servingsValue : Number.NaN;
     const dateKey = getDateKey(req.body?.date);
 
-    if (
-      typeof submittedMealId !== "string" ||
-      submittedMealId.trim().length === 0
-    ) {
+    if (hasSubmittedMealId === Boolean(communityMealId)) {
       res.status(400).json({
         success: false,
         message: "Mã món ăn không hợp lệ",
       });
       return;
     }
-    const mealId = submittedMealId.trim();
+    let mealId =
+      typeof submittedMealId === "string" ? submittedMealId.trim() : "";
     if (!isMealPeriod(mealPeriod)) {
       res.status(400).json({
         success: false,
@@ -254,10 +265,28 @@ export const addMealToPlan = async (
       });
       return;
     }
-    const meal = await prisma.meal.findFirst({
-      where: { id: mealId, isPublished: true },
-      select: { id: true },
-    });
+    if (communityMealId) {
+      const communityMealCopyId = await prisma.$transaction((transaction) =>
+        getOrCreateCommunityMealPlanCopy(transaction, communityMealId),
+      );
+      if (!communityMealCopyId) {
+        res.status(404).json({
+          success: false,
+          message: "Không tìm thấy món cộng đồng đã được duyệt",
+        });
+        return;
+      }
+      mealId = communityMealCopyId;
+    }
+    const meal = communityMealId
+      ? await prisma.meal.findUnique({
+          where: { id: mealId },
+          select: { id: true },
+        })
+      : await prisma.meal.findFirst({
+          where: { id: mealId, isPublished: true },
+          select: { id: true },
+        });
     if (!meal) {
       res.status(404).json({
         success: false,
@@ -323,6 +352,7 @@ export const addMealToPlan = async (
           name: plannedMeal.meal.name,
           imageUrl: plannedMeal.meal.imageUrl,
           category: plannedMeal.meal.category,
+          communityMealId: plannedMeal.meal.communitySourceId,
         },
         nutritionSummary: calculateNutritionSummary(
           plannedMeal.meal,
@@ -459,6 +489,7 @@ export const getMealPlan = async (
           description: plannedMeal.meal.description,
           imageUrl: plannedMeal.meal.imageUrl,
           category: plannedMeal.meal.category,
+          communityMealId: plannedMeal.meal.communitySourceId,
         },
         nutritionSummary,
         estimatedPrice,
@@ -1108,6 +1139,7 @@ export const getDailyConsumedMeals = async (
         .map((meal) => ({
           id: meal.id,
           mealId: meal.mealId,
+          communityMealId: meal.meal.communitySourceId,
           name: meal.meal.name,
           imageUrl: meal.meal.imageUrl,
           mealPeriod: meal.mealPeriod,
@@ -1127,6 +1159,7 @@ export const getDailyConsumedMeals = async (
         .map((meal) => ({
           id: meal.id,
           mealId: meal.mealId,
+          communityMealId: meal.meal.communitySourceId,
           name: meal.meal.name,
           imageUrl: meal.meal.imageUrl,
           mealPeriod: meal.mealPeriod,
@@ -1139,6 +1172,7 @@ export const getDailyConsumedMeals = async (
       ...manualEntries.map((entry) => ({
         id: entry.id,
         mealId: entry.mealId,
+        communityMealId: entry.meal.communitySourceId,
         name: entry.meal.name,
         imageUrl: entry.meal.imageUrl,
         mealPeriod: entry.mealPeriod,
@@ -1184,6 +1218,10 @@ export const getDailyConsumedMeals = async (
           {
             id: `${completion.id}:${index}`,
             mealId: item.mealId,
+            communityMealId:
+              typeof item.communityMealId === "string"
+                ? item.communityMealId
+                : null,
             name: item.name,
             imageUrl: null,
             mealPeriod: completion.mealPeriod,

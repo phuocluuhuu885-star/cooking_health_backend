@@ -355,6 +355,8 @@ model Meal {
   // Các quan hệ
   ingredients              Ingredient[] // Danh sách nguyên liệu
   cookingSteps             CookingStep[] // Các bước thực hiện
+  communitySourceId        String?                   @unique
+  communitySource          CommunityMeal?            @relation(fields: [communitySourceId], references: [id], onDelete: SetNull)
   plannedMeals             PlannedMeal[]
   householdPlannedMeals    HouseholdPlannedMeal[]
   householdMealPollOptions HouseholdMealPollOption[]
@@ -415,6 +417,7 @@ model CommunityMeal {
   reviewedBy   User?                 @relation("CommunityMealModerator", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviews      CommunityMealReview[]
   favorites    CommunityMealFavorite[]
+  mealCopy     Meal?
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
 

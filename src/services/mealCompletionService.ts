@@ -10,6 +10,7 @@ type MealForCompletion = {
 export type MealCompletionSnapshot = {
   items: Array<{
     mealId: string;
+    communityMealId: string | null;
     name: string;
     servings: number;
     nutrition: ReturnType<typeof calculateNutritionSummary>;
@@ -46,6 +47,7 @@ export const createMealCompletionSnapshot = (
     );
     snapshot.items.push({
       mealId: plannedMeal.mealId,
+      communityMealId: plannedMeal.meal.communitySourceId,
       name: plannedMeal.meal.name,
       servings: plannedMeal.servings,
       nutrition,

@@ -19,6 +19,7 @@ import {
   createHouseholdNotifications,
   getMealPeriodLabel,
 } from "../services/householdNotificationService.js";
+import { getOrCreateCommunityMealPlanCopy } from "../services/communityMealPlanCopy.js";
 import "dotenv/config";
 
 const adapter = new PrismaPg({
@@ -708,6 +709,7 @@ export const getHouseholdMealPlan = async (
                   description: true,
                   imageUrl: true,
                   category: true,
+                  communitySourceId: true,
                   servings: true,
                   ingredients: { select: { name: true, amountG: true } },
                 },
@@ -797,6 +799,7 @@ export const getHouseholdMealPlan = async (
               description: option.meal.description,
               imageUrl: option.meal.imageUrl,
               category: option.meal.category,
+              communityMealId: option.meal.communitySourceId,
             },
             estimatedPrice: estimateMealPrice(option.meal, option.servings),
             agrees,
@@ -838,6 +841,7 @@ export const getHouseholdMealPlan = async (
           description: plannedMeal.meal.description,
           imageUrl: plannedMeal.meal.imageUrl,
           category: plannedMeal.meal.category,
+          communityMealId: plannedMeal.meal.communitySourceId,
         },
         nutritionSummary,
         estimatedPrice,
@@ -1027,8 +1031,13 @@ export const addMealToHouseholdPlan = async (
   res: Response
 ): Promise<void> => {
   const userId = req.user?.id;
-  const mealId =
+  const submittedMealId =
     typeof req.body?.mealId === "string" ? req.body.mealId.trim() : "";
+  const communityMealId =
+    typeof req.body?.communityMealId === "string"
+      ? req.body.communityMealId.trim()
+      : "";
+  let mealId = submittedMealId;
   const mealPeriod = req.body?.mealPeriod;
   const dateKey = getDateKey(req.body?.date);
   const servingsValue = req.body?.servings ?? 1;
@@ -1040,7 +1049,7 @@ export const addMealToHouseholdPlan = async (
       .json({ success: false, message: "Phiên đăng nhập không hợp lệ" });
     return;
   }
-  if (!mealId) {
+  if (Boolean(submittedMealId) === Boolean(communityMealId)) {
     res.status(400).json({ success: false, message: "Mã món ăn không hợp lệ" });
     return;
   }
@@ -1072,10 +1081,28 @@ export const addMealToHouseholdPlan = async (
       });
       return;
     }
-    const meal = await prisma.meal.findFirst({
-      where: { id: mealId, isPublished: true },
-      include: { ingredients: true },
-    });
+    if (communityMealId) {
+      const communityMealCopyId = await prisma.$transaction((transaction) =>
+        getOrCreateCommunityMealPlanCopy(transaction, communityMealId),
+      );
+      if (!communityMealCopyId) {
+        res.status(404).json({
+          success: false,
+          message: "Không tìm thấy món cộng đồng đã được duyệt",
+        });
+        return;
+      }
+      mealId = communityMealCopyId;
+    }
+    const meal = communityMealId
+      ? await prisma.meal.findUnique({
+          where: { id: mealId },
+          include: { ingredients: true },
+        })
+      : await prisma.meal.findFirst({
+          where: { id: mealId, isPublished: true },
+          include: { ingredients: true },
+        });
     if (!meal) {
       res
         .status(404)
@@ -1147,6 +1174,7 @@ export const addMealToHouseholdPlan = async (
             description: meal.description,
             imageUrl: meal.imageUrl,
             category: meal.category,
+            communityMealId: meal.communitySourceId,
           },
           nutritionSummary: calculateNutritionSummary(meal, servings),
         },
