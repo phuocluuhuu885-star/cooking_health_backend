@@ -175,7 +175,9 @@ export const getCommunityMeals = async (
   const pagination = readPagination(req.query);
   const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const mine = req.query.mine === "true";
-  if (!pagination || query.length > 100) {
+  const authorId =
+    typeof req.query.authorId === "string" ? req.query.authorId.trim() : "";
+  if (!pagination || query.length > 100 || authorId.length > 100) {
     res.status(400).json({
       success: false,
       message: "Tham số tìm kiếm hoặc phân trang không hợp lệ.",
@@ -185,7 +187,11 @@ export const getCommunityMeals = async (
 
   try {
     const where: Prisma.CommunityMealWhereInput = {
-      ...(mine ? { creatorId: req.user!.id } : {}),
+      ...(mine
+        ? { creatorId: req.user!.id }
+        : authorId
+          ? { creatorId: authorId }
+          : {}),
       ...(query
         ? {
             OR: [
@@ -209,11 +215,29 @@ export const getCommunityMeals = async (
           instructions: true,
           nutrition: true,
           createdAt: true,
-          creator: { select: { fullName: true } },
+          creator: { select: { fullName: true, avatarUrl: true } },
         },
       }),
       prisma.communityMeal.count({ where }),
     ]);
+    const mealIds = meals.map((meal) => meal.id);
+    const aggregates = mealIds.length
+      ? await prisma.communityMealReview.groupBy({
+          by: ["mealId"],
+          where: { mealId: { in: mealIds } },
+          _avg: { rating: true },
+          _count: { _all: true },
+        })
+      : [];
+    const aggregateByMealId = new Map(
+      aggregates.map((aggregate) => [
+        aggregate.mealId,
+        {
+          averageRating: aggregate._avg.rating ?? 0,
+          reviewCount: aggregate._count._all,
+        },
+      ]),
+    );
 
     res.status(200).json({
       success: true,
@@ -221,6 +245,11 @@ export const getCommunityMeals = async (
         ...meal,
         imageUrl: `/api/community-meals/${meal.id}/image`,
         creatorName: creator.fullName || "Thành viên MealCraft",
+        creatorAvatar: creator.avatarUrl,
+        ...(aggregateByMealId.get(meal.id) ?? {
+          averageRating: 0,
+          reviewCount: 0,
+        }),
       })),
       pagination: {
         currentPage: pagination.page,
@@ -259,13 +288,18 @@ export const getCommunityMeal = async (
         instructions: true,
         nutrition: true,
         createdAt: true,
-        creator: { select: { fullName: true } },
+        creator: { select: { fullName: true, avatarUrl: true } },
       },
     });
     if (!meal) {
       res.status(404).json({ success: false, message: "Không tìm thấy món ăn." });
       return;
     }
+    const reviewAggregate = await prisma.communityMealReview.aggregate({
+      where: { mealId: id },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
     const { creator, ...mealData } = meal;
     res.status(200).json({
       success: true,
@@ -273,6 +307,9 @@ export const getCommunityMeal = async (
         ...mealData,
         imageUrl: `/api/community-meals/${mealData.id}/image`,
         creatorName: creator.fullName || "Thành viên MealCraft",
+        creatorAvatar: creator.avatarUrl,
+        averageRating: reviewAggregate._avg.rating ?? 0,
+        reviewCount: reviewAggregate._count._all,
       },
     });
   } catch (error) {
@@ -280,6 +317,174 @@ export const getCommunityMeal = async (
     res.status(500).json({
       success: false,
       message: "Không thể tải thông tin món ăn.",
+    });
+  }
+};
+
+export const getCommunityMealReviews = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const { id } = req.params;
+  const offset = req.query.offset === undefined ? 0 : Number(req.query.offset);
+  if (
+    typeof id !== "string" ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    offset > 10_000
+  ) {
+    res.status(400).json({
+      success: false,
+      message: "Thông tin yêu cầu đánh giá không hợp lệ.",
+    });
+    return;
+  }
+
+  try {
+    const meal = await prisma.communityMeal.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!meal) {
+      res.status(404).json({ success: false, message: "Không tìm thấy món ăn." });
+      return;
+    }
+
+    const where = { mealId: id };
+    const [reviews, total, aggregate, myReview] = await Promise.all([
+      prisma.communityMealReview.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: offset,
+        take: 20,
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          user: {
+            select: { fullName: true, avatarUrl: true },
+          },
+        },
+      }),
+      prisma.communityMealReview.count({ where }),
+      prisma.communityMealReview.aggregate({
+        where,
+        _avg: { rating: true },
+      }),
+      prisma.communityMealReview.findUnique({
+        where: {
+          mealId_userId: { mealId: id, userId: req.user!.id },
+        },
+        select: { id: true, rating: true, comment: true, createdAt: true },
+      }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        reviews: reviews.map((review) => ({
+          id: review.id,
+          rating: review.rating,
+          comment: review.comment,
+          createdAt: review.createdAt.toISOString(),
+          userName: review.user.fullName || "Thành viên",
+          userAvatar: review.user.avatarUrl,
+        })),
+        total,
+        averageRating: aggregate._avg.rating ?? 0,
+        myReview: myReview
+          ? {
+              ...myReview,
+              createdAt: myReview.createdAt.toISOString(),
+            }
+          : null,
+        hasMore: offset + reviews.length < total,
+      },
+    });
+  } catch (error) {
+    console.error("GET COMMUNITY MEAL REVIEWS ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Không thể tải đánh giá món ăn.",
+    });
+  }
+};
+
+export const upsertCommunityMealReview = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const { id } = req.params;
+  const userId = req.user?.id;
+  const { rating, comment } = req.body ?? {};
+  if (typeof id !== "string" || !userId) {
+    res.status(401).json({
+      success: false,
+      message: "Đăng nhập để đánh giá món ăn.",
+    });
+    return;
+  }
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    res.status(400).json({
+      success: false,
+      message: "Số sao đánh giá phải là số nguyên từ 1 đến 5.",
+    });
+    return;
+  }
+  if (
+    comment !== undefined &&
+    comment !== null &&
+    (typeof comment !== "string" || comment.trim().length > 1000)
+  ) {
+    res.status(400).json({
+      success: false,
+      message: "Nhận xét không được vượt quá 1000 ký tự.",
+    });
+    return;
+  }
+
+  try {
+    const meal = await prisma.communityMeal.findUnique({
+      where: { id },
+      select: { creatorId: true },
+    });
+    if (!meal) {
+      res.status(404).json({ success: false, message: "Không tìm thấy món ăn." });
+      return;
+    }
+    if (meal.creatorId === userId) {
+      res.status(403).json({
+        success: false,
+        message: "Bạn không thể tự đánh giá món ăn của mình.",
+      });
+      return;
+    }
+
+    const review = await prisma.communityMealReview.upsert({
+      where: { mealId_userId: { mealId: id, userId } },
+      create: {
+        mealId: id,
+        userId,
+        rating,
+        comment: typeof comment === "string" ? comment.trim() || null : null,
+      },
+      update: {
+        rating,
+        comment: typeof comment === "string" ? comment.trim() || null : null,
+      },
+      select: { id: true, rating: true, comment: true, createdAt: true },
+    });
+    res.status(200).json({
+      success: true,
+      message: "Đã lưu đánh giá.",
+      data: { ...review, createdAt: review.createdAt.toISOString() },
+    });
+  } catch (error) {
+    console.error("UPSERT COMMUNITY MEAL REVIEW ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Không thể gửi đánh giá món ăn.",
     });
   }
 };

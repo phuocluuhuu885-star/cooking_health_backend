@@ -118,7 +118,9 @@ import {
   deleteCommunityMeal,
   getCommunityMeal,
   getCommunityMealImage,
+  getCommunityMealReviews,
   getCommunityMeals,
+  upsertCommunityMealReview,
 } from "../controllers/communityMealController.js";
 import {
   createExpense,
@@ -164,6 +166,16 @@ router.post(
 );
 router.get("/community-meals", authenticate, getCommunityMeals);
 router.post("/community-meals", authenticate, createCommunityMeal);
+router.get(
+  "/community-meals/:id/reviews",
+  authenticate,
+  getCommunityMealReviews,
+);
+router.post(
+  "/community-meals/:id/reviews",
+  authenticate,
+  upsertCommunityMealReview,
+);
 router.get("/community-meals/:id/image", getCommunityMealImage);
 router.get("/community-meals/:id", authenticate, getCommunityMeal);
 router.delete("/community-meals/:id", authenticate, deleteCommunityMeal);
