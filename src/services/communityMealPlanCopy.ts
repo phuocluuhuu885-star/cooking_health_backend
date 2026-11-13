@@ -69,6 +69,7 @@ export const getOrCreateCommunityMealPlanCopy = async (
       communitySourceId: communityMeal.id,
       name: communityMeal.name,
       description: communityMeal.description,
+      imageUrl: `/api/community-meals/${communityMeal.id}/image`,
       category: MealType.DINNER,
       isPublished: false,
       servings: 1,
@@ -85,6 +86,7 @@ export const getOrCreateCommunityMealPlanCopy = async (
     update: {
       name: communityMeal.name,
       description: communityMeal.description,
+      imageUrl: `/api/community-meals/${communityMeal.id}/image`,
       caloriesPer100g: nutrition.caloriesKcal,
       proteinPer100g: nutrition.proteinG,
       carbsPer100g: nutrition.carbohydratesG,

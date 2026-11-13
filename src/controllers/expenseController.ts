@@ -123,8 +123,9 @@ const serializeExpense = (expense: {
   createdByUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
-}) => ({
+}, imageUrl: string | null = null) => ({
   ...expense,
+  imageUrl,
   expenseDate: expense.expenseDate.toISOString().slice(0, 10),
   createdAt: expense.createdAt.toISOString(),
   updatedAt: expense.updatedAt.toISOString(),
@@ -167,6 +168,26 @@ export const getExpenses = async (
       },
       orderBy: [{ expenseDate: "desc" }, { createdAt: "desc" }],
     });
+    const mealIds = [
+      ...new Set(
+        items.flatMap((item) => (item.mealId ? [item.mealId] : [])),
+      ),
+    ];
+    const meals = mealIds.length
+      ? await prisma.meal.findMany({
+          where: { id: { in: mealIds } },
+          select: { id: true, imageUrl: true, communitySourceId: true },
+        })
+      : [];
+    const mealImages = new Map(
+      meals.map((meal) => [
+        meal.id,
+        meal.imageUrl ??
+          (meal.communitySourceId
+            ? `/api/community-meals/${meal.communitySourceId}/image`
+            : null),
+      ]),
+    );
     const categories = Object.values(ExpenseCategory).map((category) => ({
       category,
       totalAmountVnd: items
@@ -177,7 +198,12 @@ export const getExpenses = async (
       success: true,
       data: {
         month: req.query.month,
-        items: items.map(serializeExpense),
+        items: items.map((item) =>
+          serializeExpense(
+            item,
+            item.mealId ? mealImages.get(item.mealId) ?? null : null,
+          ),
+        ),
         totalAmountVnd: items.reduce(
           (total, item) => total + item.amountVnd,
           0
