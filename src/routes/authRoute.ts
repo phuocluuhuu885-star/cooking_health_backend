@@ -113,6 +113,14 @@ import {
   getWaterIntake,
 } from "../controllers/waterIntakeController.js";
 import {
+  analyzeCommunityMealNutrition,
+  createCommunityMeal,
+  deleteCommunityMeal,
+  getCommunityMeal,
+  getCommunityMealImage,
+  getCommunityMeals,
+} from "../controllers/communityMealController.js";
+import {
   createExpense,
   deleteExpense,
   deleteMealBudget,
@@ -149,6 +157,16 @@ router.put("/auth/profile/avatar", authenticate, updateAvatar);
 router.get("/auth/profile/avatar/:userId", getAvatar);
 router.get("/meal/getAll", getAllMeals);
 router.get("/meal/search", searchMeals);
+router.post(
+  "/community-meals/analyze-nutrition",
+  authenticate,
+  analyzeCommunityMealNutrition,
+);
+router.get("/community-meals", authenticate, getCommunityMeals);
+router.post("/community-meals", authenticate, createCommunityMeal);
+router.get("/community-meals/:id/image", getCommunityMealImage);
+router.get("/community-meals/:id", authenticate, getCommunityMeal);
+router.delete("/community-meals/:id", authenticate, deleteCommunityMeal);
 router.get(
   "/meal/reviews/summary",
   optionalAuthenticate,

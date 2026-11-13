@@ -79,6 +79,7 @@ model User {
   createdAt              DateTime                   @default(now())
   updatedAt              DateTime                   @updatedAt
   mealReviews            MealReview[]
+  communityMeals         CommunityMeal[]
   walkingWorkouts        WalkingWorkout[]
   waterIntakeEntries     WaterIntakeEntry[]
   personalExpenses       Expense[]                  @relation("PersonalExpenseOwner")
@@ -379,6 +380,24 @@ model MealReview {
 
   @@unique([mealId, userId])
   @@index([mealId, createdAt])
+}
+
+model CommunityMeal {
+  id           String   @id @default(cuid())
+  creatorId    String
+  creator      User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  name         String   @db.VarChar(120)
+  description  String?  @db.VarChar(500)
+  ingredients  Json
+  instructions String   @db.Text
+  nutrition    Json
+  image        Bytes
+  contentType  String   @db.VarChar(30)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([creatorId, createdAt])
 }
 
 model PlannedMeal {
